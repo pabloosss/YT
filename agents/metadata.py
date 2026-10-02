@@ -11,25 +11,23 @@ class MetadataAgent(BaseAgent):
         if self.ai.demo_mode:
             return {
                 "title": topic[:100],
-                "description": (
-                    f"Film o temacie: {topic}\n\n"
-                    "Opis demonstracyjny wygenerowany przez AI Content Studio."
-                ),
-                "tags": ["youtube", "ai content studio"],
+                "description": f"Krótki film o temacie: {topic}\n\n#shorts #tiktok",
+                "tags": ["shorts", "tiktok", "ciekawostki"],
                 "category_id": "22",
                 "privacy_status": "private",
             }
 
         raw = self.ai.ask(
             instructions=(
-                "Jesteś specjalistą od metadanych YouTube. Tworzysz konkretny tytuł, opis i tagi "
-                "na podstawie scenariusza. Nie stosuj clickbaitu sprzecznego z treścią. "
-                "Odpowiadaj WYŁĄCZNIE poprawnym JSON-em."
+                "Jesteś specjalistą od metadanych YouTube Shorts i TikToka. Tworzysz krótki, konkretny "
+                "tytuł, opis oraz tagi na podstawie scenariusza. Nie stosuj clickbaitu sprzecznego z treścią. "
+                "Opis zakończ pasującymi hashtagami, w tym #shorts. Odpowiadaj WYŁĄCZNIE poprawnym JSON-em."
             ),
             prompt=(
                 f"Temat: {topic}\n\nSCENARIUSZ:\n{script}\n\n"
-                "Zwróć obiekt JSON z polami: title (max 100 znaków), description, tags (tablica), "
-                "category_id (domyślnie 22), privacy_status ustawione zawsze na private."
+                "Zwróć obiekt JSON z polami: title (najlepiej do 60 znaków, maks. 100), "
+                "description (krótki opis i 3–5 hashtagów), tags (tablica), "
+                "category_id (domyślnie 22), privacy_status zawsze private."
             ),
         )
 
@@ -38,10 +36,13 @@ class MetadataAgent(BaseAgent):
         tags = data.get("tags") or []
         if not isinstance(tags, list):
             tags = []
+        description = str(data.get("description") or "").strip()
+        if "#shorts" not in description.lower():
+            description = (description + "\n\n#shorts").strip()
 
         return {
             "title": title,
-            "description": str(data.get("description") or "").strip(),
+            "description": description,
             "tags": [str(tag).strip() for tag in tags if str(tag).strip()][:25],
             "category_id": str(data.get("category_id") or "22"),
             "privacy_status": "private",
