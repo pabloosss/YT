@@ -67,3 +67,25 @@ def alignment_to_srt(alignment: dict, output: Path, *, words_per_caption: int = 
     ]
     output.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
     return output
+
+
+def text_to_srt(text: str, output: Path, *, duration_seconds: float = 30.0,
+                words_per_caption: int = 5) -> Path:
+    """Create approximate captions locally when narration exists but timestamps do not."""
+    words = clean_narration(text).split()
+    if not words:
+        raise ValueError("Scenariusz nie zawiera tekstu do utworzenia napisów.")
+    chunks = [words[index:index + words_per_caption] for index in range(0, len(words), words_per_caption)]
+    seconds_per_word = duration_seconds / len(words)
+    blocks = []
+    word_index = 0
+    for number, chunk in enumerate(chunks, start=1):
+        start = word_index * seconds_per_word
+        word_index += len(chunk)
+        end = min(duration_seconds, word_index * seconds_per_word)
+        blocks.append(
+            f"{number}\n{_srt_time(start)} --> {_srt_time(max(end, start + 0.15))}\n{' '.join(chunk)}"
+        )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n\n".join(blocks) + "\n", encoding="utf-8")
+    return output
