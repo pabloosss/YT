@@ -65,6 +65,16 @@ def load_settings() -> Settings:
     context = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
     # Aplikacja jest wyspecjalizowana w pionowych filmach TikTok/YouTube Shorts.
     aspect_ratio = "9:16"
+    requested_model = os.getenv("OLLAMA_MODEL", "qwen3:14b").strip().lower()
+    try:
+        settings_version = int(os.getenv("AI_STUDIO_SETTINGS_VERSION", "0"))
+    except ValueError:
+        settings_version = 0
+    ollama_model = (
+        requested_model
+        if settings_version >= 6 and requested_model in {"qwen3:8b", "qwen3:14b"}
+        else "qwen3:14b"
+    )
 
     return Settings(
         ai_provider="ollama",
@@ -72,7 +82,7 @@ def load_settings() -> Settings:
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6").strip(),
 
         ollama_url=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
-        ollama_model="qwen3:8b",
+        ollama_model=ollama_model,
         ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "900")),
         ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "15m").strip() or "15m",
         ollama_num_ctx=max(2048, context),
