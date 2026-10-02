@@ -25,7 +25,7 @@ from core.veo_client import VeoClient
 from core.web_research import search_web, source_text
 from core.youtube_publisher import UploadRequest, YouTubePublisher
 
-AGENTS = ["Research", "Scenariusz", "Showrunner", "Grafika", "Lektor", "Montaż", "Kontrola", "YouTube Meta"]
+AGENTS = ["Research", "Scenariusz", "Showrunner", "Lektor", "Grafika", "Montaż", "Kontrola", "YouTube Meta"]
 
 
 class StudioApp(tk.Tk):
@@ -152,6 +152,7 @@ class StudioApp(tk.Tk):
         self.preview.pack(fill="both", expand=True)
         bottom = ttk.Frame(self.projects)
         bottom.pack(fill="x")
+        self._button(bottom, "Dokończ bez ponownego Veo", self.finish_last_project)
         self._button(bottom, "Połącz YouTube", self.youtube_auth)
         self._button(bottom, "Wyślij film jako PRIVATE", self.publish_last)
         ttk.Label(bottom, text="Najpierw sprawdź źródła, treść i gotowy film.").pack(side="left", padx=8)
@@ -597,6 +598,33 @@ class StudioApp(tk.Tk):
             os.startfile(path)
         else:
             subprocess.Popen(["xdg-open", str(path)])
+
+    def finish_last_project(self):
+        if not self.last_project:
+            messagebox.showwarning("Projekt", "Wybierz niedokończony projekt.")
+            return
+        clips = list((self.last_project / "video_clips").glob("*.mp4"))
+        if not clips:
+            messagebox.showwarning("Odzyskiwanie", "Ten projekt nie ma zapisanych klipów Veo.")
+            return
+        if not self.save_settings():
+            return
+        if not messagebox.askyesno(
+            "Bez ponownego Veo",
+            f"Użyję {len(clips)} zapisanych klipów. Veo nie zostanie ponownie wywołane. Dokończyć głos i montaż?",
+        ):
+            return
+        project = self.last_project
+        def work():
+            return self.pipeline.finish_existing(
+                project,
+                status=lambda agent, state: self.events.put(("stage", (agent, state))),
+            )
+        def done(output):
+            self._refresh_projects()
+            self.summary.set("Odzyskano film bez ponownego generowania Veo: " + str(output))
+            messagebox.showinfo("Film gotowy", "Dokończono bez ponownego kosztu Veo.\n" + str(output))
+        self._job("Dokańczam z zapisanych klipów", work, done)
 
     def youtube_auth(self):
         if not self.publisher.is_configured():
