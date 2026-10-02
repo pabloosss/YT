@@ -1139,7 +1139,27 @@ class StudioApp(tk.Tk):
                         str(payload),
                     )
 
+                elif kind == "startup_probe":
+                    state = payload
+                    self._apply_ollama_state(state)
+
+                    if state.server_running and state.model_installed:
+                        self.settings.ai_provider = "ollama"
+                        self.settings.demo_mode = False
+                        self.provider_var.set("ollama")
+                        self.model_combo["values"] = state.models
+                        save_ai_settings(self.settings)
+                        self._update_header()
+                    elif state.installed and not state.server_running:
+                        self._set_connection_visual(
+                            "error",
+                            "AI: OLLAMA WYŁĄCZONA",
+                            "Stan wykryty poprawnie. Za chwilę aplikacja spróbuje uruchomić Ollamę.",
+                        )
+                        self.after(900, self._auto_start_ollama)
+
                 elif kind == "ollama_connection":
+                    self.connection_action_in_progress = False
                     data = dict(payload)
                     state = data["state"]
                     silent = bool(data.get("silent"))
@@ -1169,6 +1189,7 @@ class StudioApp(tk.Tk):
                             messagebox.showwarning("Lokalne AI", detail)
 
                 elif kind == "ollama_connection_error":
+                    self.connection_action_in_progress = False
                     data = dict(payload)
                     message = str(data.get("message") or "Nieznany błąd Ollamy.")
                     silent = bool(data.get("silent"))
@@ -1183,9 +1204,38 @@ class StudioApp(tk.Tk):
                         messagebox.showerror("Lokalne AI", message)
 
                 elif kind == "ollama_state":
+                    self.connection_action_in_progress = False
+                    self.connect_ai_button.configure(state="normal")
                     self._apply_ollama_state(payload)
 
+                elif kind == "ram_budget_block":
+                    self.connection_action_in_progress = False
+                    self.connect_ai_button.configure(state="normal")
+                    data = dict(payload)
+                    message = str(data.get("message") or "Limit RAM blokuje uruchomienie modelu.")
+                    silent = bool(data.get("silent"))
+                    self._set_connection_visual(
+                        "warning",
+                        "AI: LIMIT RAM ZA NISKI",
+                        message,
+                    )
+                    self._write_log(f"LIMIT RAM: {message}")
+                    if not silent:
+                        messagebox.showwarning("Limit RAM", message)
+
+                elif kind == "ram_guard_unloaded":
+                    self.connection_action_in_progress = False
+                    self.connect_ai_button.configure(state="normal")
+                    self._apply_ollama_state(payload)
+                    self._set_connection_visual(
+                        "warning",
+                        "AI: MODEL ZWOLNIONY PRZEZ LIMIT RAM",
+                        "Model został usunięty z pamięci, ponieważ procesy Ollamy przekroczyły ustawiony budżet.",
+                    )
+                    self._write_log("Strażnik RAM zwolnił model po przekroczeniu limitu.")
+
                 elif kind == "model_missing":
+                    self.connection_action_in_progress = False
                     self.connect_ai_button.configure(state="normal")
                     self._apply_ollama_state(payload)
                     messagebox.showwarning(
@@ -1194,6 +1244,7 @@ class StudioApp(tk.Tk):
                     )
 
                 elif kind == "model_pulled":
+                    self.connection_action_in_progress = False
                     self.connect_ai_button.configure(state="normal")
                     self._apply_ollama_state(payload)
                     self._write_log("Ollama: model został pobrany.")
@@ -1218,6 +1269,7 @@ class StudioApp(tk.Tk):
                     )
 
                 elif kind == "model_unloaded":
+                    self.connection_action_in_progress = False
                     self._apply_ollama_state(payload)
                     self._write_log(
                         "Ollama: model został zwolniony z pamięci."
