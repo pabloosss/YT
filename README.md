@@ -1,86 +1,77 @@
-# AI Content Studio — lokalny qwen3:8b
+# AI Content Studio v0.9
 
-- Silnik tekstowy jest ustawiony na stałe: lokalna Ollama i `qwen3:8b`. Poprzednie wartości `AI_PROVIDER` oraz `OLLAMA_MODEL` w `.env` nie zmieniają tego wyboru.
-- Górny przycisk „Włącz / połącz Ollamę” uruchamia serwer i sprawdza model bez ładowania go do RAM. Limit pamięci nie blokuje połączenia.
-- „AI: znajdź tematy” automatycznie przygotowuje model, zleca AI plan zapytań, wykonuje wyszukiwania i przekazuje źródła do AI, które wybiera tematy, hooki i uzasadnienia. Profil kanału jest używany. Wyniki i źródła zapisują się w Projekty.
-- Start projektu i wyszukiwanie łączą Ollamę i ładują model bez ponownego klikania. Status załadowania jest potwierdzany przez serwer.
-- Profil 32 GB używa domyślnie 50% RAM i kontekstu 4096.
-- Usunięto sztywną blokadę „brakuje dodatkowych 3 GB”. Mała ilość wolnej pamięci daje informację, nie blokuje połączenia. Budżet modelu i monitor RAM pozostają aktywne; nie gwarantują ochrony przed wyczerpaniem pamięci.
-
-# AI Content Studio
-
-Lokalna aplikacja Windows do przygotowywania filmów YouTube/TikTok. Python + Tkinter, tekst przez Ollamę lub opcjonalnie OpenAI. Agenci pracują **kolejno, na jednym modelu**, aby nie mnożyć zużycia RAM.
+Windowsowa aplikacja, która prowadzi projekt od tematu do gotowego filmu. Tekst i decyzje agentów wykonuje lokalny qwen3:8b w Ollamie. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
 
 ## Uruchomienie
 
-Wymagany Python 3.11+ i Ollama dla lokalnego tekstu. Kliknij `run_windows.bat`. Launcher tworzy `.venv`, sprawdza zależności i uruchamia okno. Aktualizacja istniejącej instalacji:
+Wymagane: Windows, Python 3.11+, Ollama oraz model qwen3:8b.
 
-```powershell
-cd "C:\Users\Pablo\Desktop\gra test\YT"
-git pull
-.\run_windows.bat
-```
+    cd "C:\Users\Pablo\Desktop\gra test\YT"
+    git pull
+    .\run_windows.bat
 
-## Prosta obsługa
+Launcher tworzy .venv, instaluje zależności (w tym awaryjną wersję FFmpeg) i uruchamia aplikację.
 
-1. **Ustawienia**: projekt używa zawsze lokalnej Ollamy i `qwen3:8b`. Domyślny budżet przy 32 GB RAM to 50%, a kontekst 4096.
-2. **Pamięć kanału**: wpisz odbiorców, styl, zasady i własną wiedzę; kliknij „Zapisz pamięć”.
-3. **Tworzenie**: wpisz temat. Możesz wcześniej kliknąć „AI: znajdź tematy” — dostaniesz inspiracje z linkami. Wpisz wybrany temat i kliknij „Przygotuj projekt”.
-4. **Projekty**: przeglądaj wyniki także po ponownym uruchomieniu aplikacji. Otwórz folder, sprawdź pliki, a gotowy film możesz wysłać jako PRIVATE.
+## Pierwsza konfiguracja
 
-Zakładka „Przebieg AI” znajduje się wewnątrz Tworzenia. Pokazuje wynik na żywo i metryki; ukryte rozumowanie nie jest wyświetlane.
+1. Otwórz **Ustawienia** i połącz Ollamę.
+2. Wklej lokalnie nowy klucz Google AI Studio z dostępem do Veo.
+3. Wklej lokalnie nowy klucz ElevenLabs. Nie używaj klucza ujawnionego wcześniej w rozmowie.
+4. Opcjonalnie podaj Voice ID; bez niego aplikacja wybierze pierwszy głos dostępny na koncie.
+5. Wybierz 16:9 dla YouTube albo 9:16 dla Shorts/TikToka.
+6. Ustaw maksymalną liczbę płatnych klipów Veo.
+7. Opcjonalnie wybierz własny plik muzyczny, do którego masz prawa.
+8. Kliknij **Sprawdź Veo + głos + FFmpeg**, a potem zapisz ustawienia.
 
-## Co działa
+Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez Git.
 
-- Research internetowy: wyszukiwanie DDGS bez klucza API, fragmenty wyników, linki i data pobrania. Internet jest wymagany. Zapytanie trafia do usług wyszukiwania, ale generowanie tekstu w trybie Ollama pozostaje lokalne.
-- Błąd wyszukiwarki zatrzymuje etap. Nie ma cichego zastępowania źródeł wiedzą modelu. Można jawnie odznaczyć Internet, aby zrobić oznaczony szkic offline.
-- To **research na podstawie fragmentów wyników**, nie pobieranie pełnych artykułów ani gwarantowany fact-check. Źródła i twierdzenia wymagają oceny człowieka. Nie ma jeszcze rankingu trendów ani autonomicznego wyboru strategii kanału.
-- Research → Scenariusz → Showrunner → Grafika → Lektor → Montaż → Kontrola → YouTube Meta.
-- Domyślnie powstaje **pakiet tekstowy**, nie film: research, scenariusz, ujęcia, prompty grafik, tekst narracji i metadata.
-- Opcjonalne obrazy i głos z płatnego API OpenAI; montaż przez FFmpeg. Włącz media w Ustawieniach. Wymagane `OPENAI_API_KEY` w `.env` i FFmpeg. Modele API można zmienić w `.env`; dostępność zależy od konta.
-- OAuth YouTube i upload zawsze PRIVATE; instrukcja: [docs/YOUTUBE_SETUP.md](docs/YOUTUBE_SETUP.md).
-- Zatrzymanie po bieżącym etapie, zapis częściowych wyników i stanu błędu. Bieżące żądanie kończy się przed zatrzymaniem; nie ma jeszcze wznawiania od dowolnego etapu.
-- Kontrola sprawdza pliki i plan ujęć, **nie prawdziwość faktów ani jakość gotowego filmu**.
+## Jak powstaje film
 
-## Pamięć i „uczenie”
+1. Research internetowy zbiera wyniki i adresy źródeł.
+2. Lokalny Qwen przygotowuje research, scenariusz i plan ujęć.
+3. Qwen tworzy po angielsku prompty filmowe dla Veo.
+4. Veo generuje osobny klip dla każdego ujęcia, do ustawionego limitu.
+5. ElevenLabs tworzy jednego spójnego lektora i znaczniki czasu.
+6. Aplikacja buduje plik SRT.
+7. FFmpeg łączy i w razie potrzeby zapętla klipy do długości narracji, dodaje lektora, cichą muzykę oraz wtopione napisy.
+8. Gotowy film trafia do projects/<projekt>/exports/final.mp4.
+9. Metadata Agent przygotowuje tytuł, opis i tagi. Film można wysłać na YouTube wyłącznie jako PRIVATE.
 
-Profil zapisuje się lokalnie w `projects/_memory/channel_profile.json` (lub w odpowiednim `PROJECTS_DIR`). Maksymalnie 4000 znaków, żeby nie zapełniać kontekstu modelu. Obejmuje nazwę, odbiorców, styl, zasady i wiedzę. Zapis jest atomowy; uszkodzony plik nie jest po cichu zastępowany pustą pamięcią.
+Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pakiet tekstowy.
 
-Profil jest dołączany do instrukcji agentów tekstowych przy każdym projekcie. Przykład: „Narracja po polsku, krótkie zdania. Nie wymyślaj cytatów. Oddzielaj legendy od źródeł historycznych.” Własne poprawki dopisz ręcznie i zapisz.
+## Pliki projektu
 
-To **pamięć w kontekście, nie trening wag Qwena**. Nie modyfikuje modelu w Ollamie. Dawne projekty są dostępne w historii, ale nie są automatycznie wczytywane do modelu. Wygenerowane fakty nie stają się samoczynnie zaufaną wiedzą. Nie ma jeszcze RAG, importowania książek ani automatycznej pamięci ocen i statystyk kanału.
+- 00_sources.json — wyniki wyszukiwania i linki;
+- 01_research.md — research;
+- 02_script.txt — scenariusz;
+- 03_shots.json — plan ujęć;
+- 04_video_prompts.json — prompty Veo;
+- video_clips/ — klipy Veo;
+- audio/narration.mp3 — lektor;
+- subtitles/narration.srt — zsynchronizowane napisy;
+- exports/final.mp4 — gotowy film;
+- 06_quality.json, 07_youtube.json, pipeline_result.json — kontrola i metadata.
 
-Każdy projekt zapisuje m.in.:
+## Koszty i bezpieczeństwo
 
-- `00_channel_profile.txt` — profil użyty dla tego projektu;
-- `00_sources.json` — wyniki wyszukiwania, linki, fragmenty i czas;
-- `01_research.md` do `07_youtube.json` — wyniki agentów;
-- `state.json` — etap i stan completed/failed/cancelled;
-- `pipeline_result.json` — informacja, czy faktycznie powstały media;
-- `08_upload.json` — identyfikator wysłanego filmu, gdy upload się powiedzie.
+Ollama, planowanie, napisy i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Limit klipów zabezpiecza przed przypadkowym uruchomieniem zbyt wielu generacji, ale aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
 
-Przy zmianie `PROJECTS_DIR` pamięć i historia są odczytywane z nowej lokalizacji. `projects/`, `.env`, `client_secret.json` i `token.json` są ignorowane przez Git. Przy własnym katalogu poza `projects/` nie dodawaj go do repozytorium. Warto tworzyć kopię zapasową projektów i profilu.
+Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu. Pierwszy prawdziwy test warto wykonać z limitem jednego klipu.
 
-## RAM i stabilność
+## Pamięć kanału
 
-Domyślny budżet: 50%, suwak 20–90%, kontekst 4096. 50% z 32 GB to około 16 GB. Aplikacja sprawdza rozmiar `qwen3:8b` oraz dostępny RAM.
+Zakładka **Pamięć kanału** zapisuje lokalnie nazwę kanału, odbiorców, styl i własne zasady w projects/_memory/channel_profile.json. Profil jest dołączany do instrukcji agentów. Jest to pamięć kontekstowa, nie trenowanie wag Qwena.
 
-Monitor sprawdza procesy Ollamy co kilka sekund. Po przekroczeniu budżetu sygnalizuje zatrzymanie produkcji i próbuje zwolnić wybrany model. To **miękki strażnik**, nie limit systemowy ani gwarancja zapobieżenia wyczerpaniu RAM. Zwalnianie aktywnego modelu może poczekać na zakończenie żądania. Monitor obejmuje również inne procesy Ollamy, ale nie zarządza ich zadaniami.
+## RAM
 
-Sprawdzanie połączenia i żądania modelu odbywają się poza wątkiem interfejsu. Powtórne kliknięcie/Enter nie uruchamia równoległej produkcji. Aplikacja zawsze łączy się z lokalną Ollamą i `qwen3:8b`.
-
-## Granice wersji
-
-Brak lokalnego generatora obrazów i TTS, automatycznych miniatur, napisów, Analytics Agenta, wielu profili kanałów, kolejki i pełnego autopilota. To dalsze moduły, a nie działające opcje w GUI. Obecny montaż jest prostym storyboardem 1280×720; nie jest jeszcze edytorem pionowych TikToków.
+Projekt zawsze używa qwen3:8b. Domyślny budżet to 50% z 32 GB RAM, a kontekst 4096. Strażnik RAM jest miękkim zabezpieczeniem aplikacji, nie twardym limitem Windows.
 
 ## Testy
 
-```powershell
-python -m compileall -q app.py agents core tests
-$env:PYTHONPATH="."
-python tests/smoke_test.py
-python -m unittest discover -s tests -p "test_*.py" -v
-python tests/ui_smoke_test.py
-```
+    python -m compileall -q app.py agents core tests
+    $env:PYTHONPATH="."
+    python tests/smoke_test.py
+    python -m unittest discover -s tests -p "test_*.py" -v
+    python tests/ui_smoke_test.py
 
-GitHub Actions wykonuje testy na Linux i Windows, a test interfejsu na Windows. Testy regresji nie pobierają modeli, nie wywołują płatnych API i nie publikują filmów. Połączenie z Twoją Ollamą, realne obciążenie 32 GB RAM i media wymagają testu na docelowym komputerze.
+CI uruchamia testy na Linuxie i Windowsie bez wywoływania płatnych API.
