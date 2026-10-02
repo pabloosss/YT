@@ -14,6 +14,7 @@ from agents.voice import VoiceAgent
 from core.channel_memory import ChannelMemory
 from core.config import Settings
 from core.editor import FFmpegEditor
+from core.elevenlabs_client import ElevenLabsClient
 from core.openai_gateway import OpenAIGateway
 from core.project_store import ProjectStore
 from core.veo_client import VeoClient
@@ -68,7 +69,27 @@ class ContentPipeline:
         finally:
             self.ai.channel_context = ""
 
+    def _media_preflight(self) -> None:
+        if not self.settings.generate_media:
+            return
+        if not self.editor.available():
+            raise RuntimeError("FFmpeg nie jest dostępny. Uruchom ponownie run_windows.bat.")
+        # Check both paid services before generating any billable media.
+        ElevenLabsClient(self.settings.elevenlabs_api_key).healthcheck(
+            self.settings.elevenlabs_voice_id
+        )
+        VeoClient(
+            self.settings.google_api_key,
+            model=self.settings.veo_model,
+            aspect_ratio=self.settings.veo_aspect_ratio,
+            resolution=self.settings.veo_resolution,
+        ).healthcheck()
+
     def _run_project(self, topic, project, status, online):
+        status("Lektor", "TEST API")
+        self._media_preflight()
+        status("Lektor", "GOTOWY" if self.settings.generate_media else "TEXT ONLY")
+
         self.ai.set_active_agent("Research")
         status("Research", "RUNNING")
         evidence = search_web(topic) if online and not self.ai.demo_mode else None
@@ -89,6 +110,21 @@ class ContentPipeline:
         project.write_json("03_shots.json", shots)
         status("Showrunner", "DONE")
 
+        # Generate the inexpensive voice before billable video clips. A TTS error can no longer
+        # waste completed Veo generations.
+        status("Lektor", "GENERUJĘ")
+        project.write_text("05_narration.txt", script)
+        audio_file = self.voice_agent.run(
+            script=script,
+            project_path=project.path,
+            generate_audio=self.settings.generate_media,
+            api_key=self.settings.elevenlabs_api_key,
+            voice_id=self.settings.elevenlabs_voice_id,
+            model=self.settings.elevenlabs_model,
+        )
+        subtitle_file = project.path / "subtitles" / "narration.srt"
+        status("Lektor", "DONE" if audio_file else "TEXT ONLY")
+
         self.ai.set_active_agent("Grafika")
         status("Grafika", "PROMPTY")
         prompts = self.graphics_agent.run(
@@ -96,7 +132,6 @@ class ContentPipeline:
             shots=shots,
             aspect_ratio=self.settings.veo_aspect_ratio,
         )
-        # Old filename stays for compatibility with projects and quality checks.
         project.write_json("04_image_prompts.json", prompts)
         project.write_json("04_video_prompts.json", prompts)
 
@@ -115,19 +150,6 @@ class ContentPipeline:
                 progress=lambda index, total: status("Grafika", f"VEO {index}/{total}"),
             )
         status("Grafika", "DONE" if video_clips else "PROMPTS ONLY")
-
-        status("Lektor", "RUNNING")
-        project.write_text("05_narration.txt", script)
-        audio_file = self.voice_agent.run(
-            script=script,
-            project_path=project.path,
-            generate_audio=self.settings.generate_media,
-            api_key=self.settings.elevenlabs_api_key,
-            voice_id=self.settings.elevenlabs_voice_id,
-            model=self.settings.elevenlabs_model,
-        )
-        subtitle_file = project.path / "subtitles" / "narration.srt"
-        status("Lektor", "DONE" if audio_file else "TEXT ONLY")
 
         status("Montaż", "RUNNING")
         video_file = None
