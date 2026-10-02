@@ -99,11 +99,25 @@ class FFmpegEditor:
         return path.resolve().as_posix().replace("'", "'\\''")
 
     @staticmethod
+    def subtitle_profile() -> dict:
+        return {
+            "font": "Arial",
+            "font_size": 20,
+            "alignment": "bottom_center",
+            "bottom_margin": 45,
+            "max_words": 4,
+            "safe_for_vertical_video": True,
+        }
+
+    @staticmethod
     def _subtitle_filter(path: Path) -> str:
         value = path.resolve().as_posix().replace("\\", "/")
         value = value.replace(":", "\\:").replace("'", "\\'")
-        style = "FontName=Arial,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=90"
-        return f"subtitles='{value}':force_style='{style}'"
+        style = (
+            "FontName=Arial,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
+            "BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginL=48,MarginR=48,MarginV=45"
+        )
+        return f"subtitles='{value}':force_style='{style}':original_size=720x1280"
 
     def render_clips(
         self,
