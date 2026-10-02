@@ -3,11 +3,16 @@ from tempfile import TemporaryDirectory
 
 from core.config import Settings
 from core.openai_gateway import OpenAIGateway
+from core.ollama_manager import OllamaManager
 from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 
 
 def main():
+    assert OllamaManager._model_matches("qwen3:30b", ["qwen3:30b"])
+    assert OllamaManager._model_matches("qwen3", ["qwen3:30b"])
+    assert not OllamaManager._model_matches("qwen3:30b", ["gemma3:27b"])
+
     with TemporaryDirectory() as temp:
         settings = Settings(
             ai_provider="demo",
