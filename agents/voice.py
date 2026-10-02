@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from agents.base import BaseAgent
 from core.elevenlabs_client import ElevenLabsClient
-from core.subtitles import short_narration
+from core.subtitles import clean_narration
 
 
 class VoiceAgent(BaseAgent):
@@ -18,12 +19,12 @@ class VoiceAgent(BaseAgent):
         generate_audio: bool,
         api_key: str = "",
         voice_id: str = "",
-        model: str = "eleven_flash_v2_5",
+        model: str = "eleven_turbo_v2_5",
         **_legacy,
     ) -> Path | None:
         audio_dir = project_path / "audio"
         audio_dir.mkdir(parents=True, exist_ok=True)
-        clean = short_narration(script)
+        clean = clean_narration(script)
         (audio_dir / "narration.txt").write_text(clean, encoding="utf-8")
 
         if not generate_audio or self.ai.demo_mode:
@@ -37,5 +38,9 @@ class VoiceAgent(BaseAgent):
             output_srt=subtitles,
             voice_id=voice_id,
             model_id=model,
+        )
+        (audio_dir / "voice_settings.json").write_text(
+            json.dumps({"model": model, "narration": clean}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
         return target
