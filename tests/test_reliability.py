@@ -65,8 +65,10 @@ class ReliabilityTests(unittest.TestCase):
         ai = MagicMock(demo_mode=False)
         ai.ask.return_value = '{"shots":[{"shot":1,"duration_sec":4,"visual":"Kot","camera":"Zoom","lightyng":"Ciemne","purpose":"Hook"}]}'
         shots = ShowrunnerAgent(ai).run(topic="koty", script="tekst")
-        self.assertEqual(len(shots), 1)
+        self.assertEqual(len(shots), 4)
         self.assertEqual(shots[0]["lighting"], "Ciemne")
+        self.assertEqual([shot["duration_sec"] for shot in shots], [8, 8, 8, 6])
+        self.assertEqual(sum(shot["duration_sec"] for shot in shots), 30)
 
     def test_think_tags_never_leak_with_any_chunk_boundary(self):
         original = "Wstęp<think>PRIVATE</think>Wynik<think>SECRET</think>Koniec"
@@ -150,6 +152,8 @@ class ReliabilityTests(unittest.TestCase):
             settings = load_settings()
             self.assertEqual(settings.ollama_ram_limit_percent, 50)
             self.assertEqual(settings.ollama_num_ctx, 4096)
+            self.assertEqual(settings.veo_aspect_ratio, "9:16")
+            self.assertEqual(settings.veo_max_clips, 4)
         with patch.dict(os.environ, {"OLLAMA_RAM_LIMIT_PERCENT": "99"}):
             self.assertEqual(load_settings().ollama_ram_limit_percent, 90)
 
