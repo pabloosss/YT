@@ -31,7 +31,7 @@ AGENTS = ["Research", "Scenariusz", "Showrunner", "Lektor", "Grafika", "Montaż"
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.9.3 · Shorts 30 s")
+        self.title("AI Content Studio v0.9.4 · Shorts 30–60 s")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -196,7 +196,7 @@ class StudioApp(tk.Tk):
         self._ram_text()
 
         ttk.Separator(self.settings_tab).pack(fill="x", pady=8)
-        ttk.Label(self.settings_tab, text="Pionowy film 30 s · TikTok / YouTube Shorts", font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        ttk.Label(self.settings_tab, text="Pionowy film 30–60 s · TikTok / YouTube Shorts", font=("Segoe UI", 13, "bold")).pack(anchor="w")
         self.media_check = ttk.Checkbutton(
             self.settings_tab,
             text="Generuj pionowy film 9:16: Veo + lektor + napisy + MP4",
@@ -222,8 +222,8 @@ class StudioApp(tk.Tk):
             options, textvariable=self.video_format, state="readonly", values=("9:16",), width=10
         )
         self.format_combo.grid(row=1, column=0, sticky="w", padx=(0, 18))
-        ttk.Label(options, text="Tryb oszczędny: 1 klip Veo Lite × 4 s").grid(row=0, column=1, sticky="w")
-        self.clips_spin = ttk.Spinbox(options, from_=1, to=1, textvariable=self.max_clips, width=8, state="readonly")
+        ttk.Label(options, text="Tryb zbalansowany: 2–3 klipy Veo Lite × 4 s").grid(row=0, column=1, sticky="w")
+        self.clips_spin = ttk.Spinbox(options, from_=3, to=3, textvariable=self.max_clips, width=8, state="readonly")
         self.clips_spin.grid(row=1, column=1, sticky="w", padx=(0, 18))
         ttk.Label(options, text="Voice ID ElevenLabs (opcjonalnie)").grid(row=0, column=2, sticky="w")
         self.voice_entry = ttk.Entry(options, textvariable=self.elevenlabs_voice, width=34)
@@ -279,10 +279,10 @@ class StudioApp(tk.Tk):
         self.settings.veo_aspect_ratio = "9:16"
         self.video_format.set("9:16")
         self.settings.veo_model = "veo-3.1-lite-generate-preview"
-        self.settings.veo_max_clips = 1
+        self.settings.veo_max_clips = 3
         self.settings.veo_duration_seconds = 4
-        self.settings.elevenlabs_model = "eleven_flash_v2_5"
-        self.max_clips.set(1)
+        self.settings.elevenlabs_model = "eleven_turbo_v2_5"
+        self.max_clips.set(3)
         self.settings.music_path = self.music_path.get().strip()
         try:
             save_ai_settings(self.settings)
@@ -413,8 +413,8 @@ class StudioApp(tk.Tk):
                 return
             if not messagebox.askyesno(
                 "Koszt Veo",
-                "Tryb oszczędny wygeneruje 1 płatny klip Veo Lite o długości 4 sekund. "
-                "Montaż wykorzysta je ponownie do złożenia 30 sekund. Kontynuować?",
+                "Tryb zbalansowany wygeneruje 2 lub 3 płatne klipy Veo Lite po 4 sekundy. "
+                "Lokalne AI dobierze długość filmu od 30 do 60 sekund. Kontynuować?",
             ):
                 return
         self.cancel.clear()
@@ -676,21 +676,27 @@ class StudioApp(tk.Tk):
             return
 
         if clips:
-            question = (
-                f"Znaleziono {len(clips)} zapisanych klipów. Użyję ich ponownie — Veo nie zostanie wywołane "
-                "i nie naliczy nowego kosztu. Brakujące etapy zostaną odtworzone. Dokończyć?"
-            )
+            if len(clips) >= 3:
+                question = (
+                    f"Znaleziono {len(clips)} zapisanych klipów. Użyję ich ponownie bez kosztu Veo. "
+                    "Lokalne AI poprawi narrację, zakończenie i kontrolę końcową. Dokończyć?"
+                )
+            else:
+                question = (
+                    f"Znaleziono tylko {len(clips)} " + ("klip. " if len(clips) == 1 else "klipy. ") + "To daje zbyt monotonny film. Program zachowa je i może "
+                    "wygenerować brakujące klipy Veo Lite, aby stworzyć pełniejszy montaż 30–60 s. Kontynuować?"
+                )
         else:
             question = (
                 "Projekt nie ma prawidłowych klipów. Program wznowi go od pierwszego brakującego etapu, "
-                "a następnie wygeneruje 1 płatny klip Veo Lite o długości 4 sekund. Kontynuować?"
+                "a następnie uzupełni 2–3 płatne klipy Veo Lite po 4 sekundy. Kontynuować?"
             )
         if not messagebox.askyesno("Dokończ projekt", question):
             return
 
-        generate_veo = not bool(clips)
+        generate_veo = len(clips) < 3
         def work():
-            text_ready = script.exists() and (project / "07_youtube.json").exists()
+            text_ready = script.exists() and (project / "07_youtube.json").exists() and (project / "08_ai_review.json").exists()
             prompt_exists = (project / "04_video_prompts.json").exists() or (project / "04_image_prompts.json").exists()
             if not text_ready or (generate_veo and not prompt_exists):
                 self._prepare_ai()
@@ -723,14 +729,21 @@ class StudioApp(tk.Tk):
         if not video.exists():
             messagebox.showwarning("Brak filmu", "Ten projekt nie zawiera gotowego filmu exports/final.mp4.")
             return
-        uploaded = project / "08_upload.json"
-        if uploaded.exists():
+        uploaded = project / "09_upload.json"
+        previous = next((path for path in (uploaded, project / "08_upload.json") if path.exists()), None)
+        if previous:
             try:
-                video_id = str(json.loads(uploaded.read_text(encoding="utf-8")).get("video_id") or "")
+                video_id = str(json.loads(previous.read_text(encoding="utf-8")).get("video_id") or "")
             except (OSError, ValueError):
                 video_id = ""
-            if video_id:
+            if video_id and automatic:
                 messagebox.showinfo("YouTube", "Ten projekt jest już wysłany jako PRIVATE.\nhttps://youtu.be/" + video_id)
+                return
+            if video_id and not messagebox.askyesno(
+                "Wyślij ponownie jako Short",
+                "Ten projekt był już wysłany. Wysłać poprawioną wersję ponownie jako PRIVATE?\n"
+                "Starą wersję możesz później usunąć w YouTube Studio.",
+            ):
                 return
         if automatic and (not self.publisher.is_configured() or not self.publisher.token_file.exists()):
             messagebox.showinfo("Film gotowy", "Film zapisano lokalnie. Połącz YouTube, aby kolejne filmy wysyłały się automatycznie jako PRIVATE.")
@@ -740,22 +753,64 @@ class StudioApp(tk.Tk):
         except (OSError, ValueError) as exc:
             messagebox.showerror("Metadata", str(exc))
             return
+        try:
+            review = json.loads((project / "08_ai_review.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            messagebox.showerror("Kontrola AI", "Brakuje końcowej kontroli lokalnego AI: " + str(exc))
+            return
+        if not review.get("approved"):
+            risks = "\n".join("• " + str(item) for item in review.get("risks", []))
+            if automatic:
+                messagebox.showwarning(
+                    "Publikacja zablokowana przez AI",
+                    str(review.get("summary") or "Projekt wymaga poprawy.") + ("\n\n" + risks if risks else ""),
+                )
+                return
+            if not messagebox.askyesno(
+                "AI nie zatwierdziło filmu",
+                str(review.get("summary") or "Projekt wymaga poprawy.") + "\n\nMimo to wysłać jako PRIVATE?",
+            ):
+                return
+        try:
+            video_info = self.editor.inspect_short(video)
+        except RuntimeError as exc:
+            messagebox.showerror("Kontrola Shorts", str(exc))
+            return
+        if not video_info.get("short_eligible"):
+            messagebox.showerror(
+                "To nie jest Short",
+                f"Upload zablokowany: {video_info.get('width')}x{video_info.get('height')}, "
+                f"{video_info.get('duration_seconds')} s. Film musi być pionowy i mieć maksymalnie 3 minuty.",
+            )
+            return
         if not automatic and not messagebox.askyesno("YouTube PRIVATE", f"Wysłać jako PRIVATE?\n{meta.get('title', video.stem)}"):
             return
+        thumbnail = project / "thumbnail" / "thumbnail.jpg"
         request = UploadRequest(video_path=video, title=str(meta.get("title") or video.stem),
                                 description=str(meta.get("description") or ""), privacy_status="private",
-                                category_id=str(meta.get("category_id") or "22"), tags=[str(t) for t in meta.get("tags", [])])
+                                category_id=str(meta.get("category_id") or "22"), tags=[str(t) for t in meta.get("tags", [])],
+                                thumbnail_path=thumbnail if thumbnail.exists() else None)
         def work():
             video_id = self.publisher.upload(request)
             uploaded.write_text(
-                json.dumps({"video_id": video_id, "privacy": "private", "url": "https://youtu.be/" + video_id}, ensure_ascii=False, indent=2),
+                json.dumps({"video_id": video_id, "privacy": "private", "url": "https://youtu.be/" + video_id,
+                            "thumbnail": str(thumbnail) if thumbnail.exists() else None,
+                            "ai_review": review}, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            return video_id
+            return {"video_id": video_id, "warning": self.publisher.last_thumbnail_warning,
+                    "summary": str(review.get("summary") or "")}
+        def done(result):
+            message = "Wysłano jako PRIVATE.\nhttps://youtu.be/" + result["video_id"]
+            if result["summary"]:
+                message += "\n\nKontrola lokalnego AI:\n" + result["summary"]
+            if result["warning"]:
+                message += "\n\n" + result["warning"]
+            messagebox.showinfo("YouTube", message)
         self._job(
             "Automatycznie wysyłam film jako PRIVATE" if automatic else "Wysyłam PRIVATE",
             work,
-            lambda vid: messagebox.showinfo("YouTube", "Wysłano jako PRIVATE.\nhttps://youtu.be/" + vid),
+            done,
         )
 
     def _events(self):
