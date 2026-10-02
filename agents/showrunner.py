@@ -26,7 +26,38 @@ class ShowrunnerAgent(BaseAgent):
                 "Zwróć tablicę JSON. Każdy element ma: shot, duration_sec, visual, camera, lighting, purpose."
             ),
         )
-        data = loads_relaxed(raw)
-        if not isinstance(data, list):
-            raise ValueError("Showrunner nie zwrócił tablicy JSON.")
-        return data
+        try:
+            data = loads_relaxed(raw)
+        except ValueError:
+            raw = self.ai.ask(
+                instructions=(
+                    "Napraw poniższy plan ujęć. Zwróć WYŁĄCZNIE poprawną tablicę JSON. "
+                    "Nie używaj Markdownu ani obiektu {shots: ...}. Każdy element musi mieć pola: "
+                    "shot, duration_sec, visual, camera, lighting, purpose."
+                ),
+                prompt=f"Temat: {topic}\n\nNIEPOPRAWNA ODPOWIEDŹ:\n{raw}",
+            )
+            data = loads_relaxed(raw)
+
+        if isinstance(data, dict):
+            data = data.get("shots")
+        if not isinstance(data, list) or not data:
+            raise ValueError("Showrunner nie zwrócił listy ujęć.")
+
+        normalized = []
+        for index, shot in enumerate(data, start=1):
+            if not isinstance(shot, dict):
+                continue
+            if "lighting" not in shot and "lightyng" in shot:
+                shot["lighting"] = shot.pop("lightyng")
+            shot.setdefault("shot", index)
+            shot.setdefault("duration_sec", 4)
+            shot.setdefault("visual", "")
+            shot.setdefault("camera", "")
+            shot.setdefault("lighting", "")
+            shot.setdefault("purpose", "")
+            normalized.append(shot)
+
+        if not normalized:
+            raise ValueError("Showrunner nie zwrócił poprawnych ujęć.")
+        return normalized
