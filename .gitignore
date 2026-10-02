@@ -1,0 +1,13 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+projects/
+dist/
+build/
+*.spec
+.idea/
+.vscode/
+client_secret.json
+token.json
