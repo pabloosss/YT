@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import re
 import unicodedata
+from uuid import uuid4
 
 
 @dataclass(slots=True)
@@ -31,13 +32,13 @@ class ProjectStore:
 
     def create(self, title: str) -> Project:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = self.root / f"{stamp}_{_slugify(title)}"
+        path = self.root / f"{stamp}_{_slugify(title)}_{uuid4().hex[:8]}"
         path.mkdir(parents=True, exist_ok=False)
 
         metadata = {
             "title": title,
             "created_at": datetime.now().isoformat(timespec="seconds"),
-            "version": "0.4.0",
+            "version": "0.8.0",
         }
         (path / "project.json").write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2),
@@ -55,3 +56,4 @@ def _slugify(value: str) -> str:
     ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
     cleaned = re.sub(r"[^a-zA-Z0-9]+", "-", ascii_value).strip("-").lower()
     return cleaned[:64] or "projekt"
+

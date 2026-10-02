@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 from core.config import Settings
 from core.json_utils import strip_thinking
+from core.stream_filter import VisibleStream
 
 
 TraceCallback = Callable[[dict], None]
@@ -22,6 +23,7 @@ class OpenAIGateway:
         self._client = None
         self._trace_callback: TraceCallback | None = None
         self._active_agent = "AI"
+        self.channel_context = ""
 
     @property
     def demo_mode(self) -> bool:
@@ -53,6 +55,8 @@ class OpenAIGateway:
             pass
 
     def ask(self, instructions: str, prompt: str) -> str:
+        if self.channel_context:
+            instructions += "\nProfil kanału podany przez użytkownika (wiedza wymaga weryfikacji):\n" + self.channel_context
         if self.demo_mode:
             raise RuntimeError("Wywołanie AI w trybie DEMO.")
 
@@ -194,6 +198,7 @@ class OpenAIGateway:
         )
 
         chunks: list[str] = []
+        visible = VisibleStream()
         thinking_announced = False
         final_event: dict = {}
 
@@ -222,7 +227,9 @@ class OpenAIGateway:
                     piece = str(message.get("content") or "")
                     if piece:
                         chunks.append(piece)
-                        self._trace("chunk", text=piece)
+                        safe_piece = visible.feed(piece)
+                        if safe_piece:
+                            self._trace("chunk", text=safe_piece)
 
                     if event.get("done"):
                         final_event = event
@@ -237,6 +244,12 @@ class OpenAIGateway:
                 "Nie można połączyć się z lokalną Ollamą. "
                 f"Sprawdź, czy działa pod {self.settings.ollama_url}."
             ) from exc
+
+        tail = visible.finish()
+        if tail:
+            self._trace("chunk", text=tail)
+        if not final_event:
+            raise RuntimeError("Ollama przerwała odpowiedź przed zakończeniem. Spróbuj ponownie.")
 
         content = strip_thinking("".join(chunks).strip())
         if not content:
@@ -349,3 +362,4 @@ class OpenAIGateway:
             response.stream_to_file(output_path)
 
         return output_path
+

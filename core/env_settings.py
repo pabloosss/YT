@@ -17,6 +17,7 @@ def save_ai_settings(settings: Settings, env_path: Path = Path(".env")) -> None:
         env_path.write_text("", encoding="utf-8")
 
     values = {
+        "GENERATE_MEDIA": "true" if settings.generate_media else "false",
         "AI_PROVIDER": settings.ai_provider,
         "AI_STUDIO_DEMO": "true" if settings.demo_mode else "false",
         "OLLAMA_URL": settings.ollama_url,
@@ -35,3 +36,4 @@ def save_ai_settings(settings: Settings, env_path: Path = Path(".env")) -> None:
 
     for key, value in values.items():
         set_key(str(env_path), key, value, quote_mode="never")
+

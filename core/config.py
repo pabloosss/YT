@@ -5,10 +5,10 @@ import os
 try:
     from dotenv import load_dotenv
 except ImportError:
-    def load_dotenv() -> None:
+    def load_dotenv(*args, **kwargs) -> None:
         return None
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 def _as_bool(value: str | None, default: bool = False) -> bool:
@@ -74,7 +74,7 @@ def load_settings() -> Settings:
         ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:30b").strip(),
         ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "900")),
         ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "15m").strip() or "15m",
-        ollama_num_ctx=max(2048, int(os.getenv("OLLAMA_NUM_CTX", "8192"))),
+        ollama_num_ctx=max(2048, int(os.getenv("OLLAMA_NUM_CTX", "4096"))),
         ollama_num_predict=max(128, int(os.getenv("OLLAMA_NUM_PREDICT", "2048"))),
         ollama_num_thread=max(0, int(os.getenv("OLLAMA_NUM_THREAD", "0"))),
         ollama_think=_as_bool(os.getenv("OLLAMA_THINK"), default=True),
@@ -83,8 +83,8 @@ def load_settings() -> Settings:
             default=False,
         ),
         ollama_ram_limit_percent=min(
-            95,
-            max(20, int(os.getenv("OLLAMA_RAM_LIMIT_PERCENT", "50"))),
+            90,
+            max(20, int(os.getenv("OLLAMA_RAM_LIMIT_PERCENT", "75"))),
         ),
 
         demo_mode=demo_mode,
@@ -102,3 +102,4 @@ def load_settings() -> Settings:
             "Mów naturalnie po polsku, energicznie, ale bez przesadnej teatralności.",
         ).strip(),
     )
+

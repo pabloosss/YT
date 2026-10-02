@@ -1,31 +1,30 @@
 name: CI
-
 on:
   push:
     branches: ["main"]
   pull_request:
     branches: ["main"]
-
 jobs:
   test:
-    runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONPATH: .
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
+        run: python -m pip install -r requirements.txt
       - name: Compile Python
         run: python -m compileall -q app.py agents core tests
-
       - name: Smoke test
-        run: PYTHONPATH=. python tests/smoke_test.py
+        run: python tests/smoke_test.py
+      - name: Reliability tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Windows interface smoke test
+        if: runner.os == 'Windows'
+        run: python tests/ui_smoke_test.py

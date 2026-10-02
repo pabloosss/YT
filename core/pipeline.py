@@ -10,6 +10,9 @@ from agents.script import ScriptAgent
 from agents.showrunner import ShowrunnerAgent
 from agents.voice import VoiceAgent
 from core.config import Settings
+from core.channel_memory import ChannelMemory
+from core.web_research import search_web
+import threading
 from core.editor import FFmpegEditor
 from core.openai_gateway import OpenAIGateway
 from core.project_store import ProjectStore
@@ -33,13 +36,43 @@ class ContentPipeline:
         self.quality_agent = QualityAgent()
         self.metadata_agent = MetadataAgent(ai)
 
-    def run(self, topic: str, status: StatusCallback | None = None):
-        status = status or (lambda _agent, _state: None)
+    def run(self, topic: str, status: StatusCallback | None = None, *, online: bool = True,
+            cancel: threading.Event | None = None):
+        callback = status or (lambda _agent, _state: None)
+        cancel = cancel or threading.Event()
         project = self.store.create(topic)
+        current = "Przygotowanie"
+
+        def report(agent, state):
+            nonlocal current
+            if cancel.is_set():
+                raise InterruptedError("Zatrzymano po bieżącym etapie. Wyniki zapisano.")
+            current = agent
+            project.write_json("state.json", {"status": "running", "agent": agent, "stage_status": state})
+            callback(agent, state)
+
+        try:
+            profile = ChannelMemory(self.settings.projects_dir / "_memory").context()
+            project.write_text("00_channel_profile.txt", profile)
+            self.ai.channel_context = profile
+            result = self._run_project(topic, project, report, online)
+            project.write_json("state.json", {"status": "completed", "agent": current})
+            return result
+        except Exception as exc:
+            state = "cancelled" if isinstance(exc, InterruptedError) else "failed"
+            project.write_json("state.json", {"status": state, "agent": current, "error": str(exc)})
+            callback(current, "STOP" if state == "cancelled" else "BŁĄD")
+            raise RuntimeError(f"{exc}\nZapisane wyniki: {project.path}") from exc
+        finally:
+            self.ai.channel_context = ""
+
+    def _run_project(self, topic, project, status, online):
 
         self.ai.set_active_agent("Research")
         status("Research", "RUNNING")
-        research = self.research_agent.run(topic=topic)
+        evidence = search_web(topic) if online and not self.ai.demo_mode else None
+        project.write_json("00_sources.json", evidence or {"sources": [], "mode": "demo" if self.ai.demo_mode else "offline"})
+        research = self.research_agent.run(topic=topic, evidence=evidence)
         project.write_text("01_research.md", research)
         status("Research", "DONE")
 
@@ -130,3 +163,4 @@ class ContentPipeline:
         )
 
         return project
+
