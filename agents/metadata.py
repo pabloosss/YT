@@ -10,7 +10,7 @@ class MetadataAgent(BaseAgent):
     def run(self, *, topic: str, script: str) -> dict:
         if self.ai.demo_mode:
             return {
-                "title": topic[:100],
+                "title": (topic[:91].rstrip() + " #Shorts")[:100],
                 "description": f"Krótki film o temacie: {topic}\n\n#shorts #tiktok",
                 "tags": ["shorts", "tiktok", "ciekawostki"],
                 "category_id": "22",
@@ -32,7 +32,10 @@ class MetadataAgent(BaseAgent):
         )
 
         data = loads_relaxed(raw)
-        title = str(data.get("title") or topic).strip()[:100]
+        title = str(data.get("title") or topic).strip()
+        if "#shorts" not in title.lower():
+            title = title[:91].rstrip() + " #Shorts"
+        title = title[:100]
         tags = data.get("tags") or []
         if not isinstance(tags, list):
             tags = []
