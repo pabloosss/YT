@@ -471,13 +471,19 @@ class StudioApp(tk.Tk):
             return
 
         if self.settings.ai_provider == "ollama" or self.provider_var.get() == "ollama":
-            state = self.ollama.inspect(self.model_var.get().strip() or self.settings.ollama_model)
+            model = self.model_var.get().strip() or self.settings.ollama_model
+            state = self.ollama.inspect(model)
             if not state.connected:
                 self.connect_ollama()
                 messagebox.showinfo(
                     "Łączenie AI",
                     "Najpierw łączę lokalną Ollamę. Gdy status zmieni się na POŁĄCZONO, uruchom pipeline ponownie.",
                 )
+                return
+
+            allowed, reason = self._ram_budget_allows_model(model)
+            if not allowed:
+                messagebox.showwarning("Limit RAM", reason)
                 return
 
         self.run_button.configure(state="disabled")
@@ -855,14 +861,48 @@ class StudioApp(tk.Tk):
     def _refresh_memory(self):
         try:
             snapshot = get_memory_snapshot()
+            budget_gb = (
+                snapshot.total_gb
+                * self.settings.ollama_ram_limit_percent
+                / 100.0
+            )
+
             self.memory_status_var.set(
                 "RAM systemu: "
                 f"{snapshot.used_gb:.1f}/{snapshot.total_gb:.1f} GB "
                 f"({snapshot.used_percent:.0f}%)  |  "
-                f"Wolne: {snapshot.available_gb:.1f} GB  |  "
-                f"Procesy Ollama: {snapshot.ollama_ram_gb:.1f} GB"
+                f"AI: {snapshot.ollama_ram_gb:.1f}/{budget_gb:.1f} GB"
             )
-            self.memory_progress["value"] = snapshot.used_percent
+
+            ai_percent_of_budget = (
+                (snapshot.ollama_ram_gb / budget_gb) * 100.0
+                if budget_gb > 0
+                else 0.0
+            )
+            self.memory_progress["value"] = min(ai_percent_of_budget, 100.0)
+
+            if snapshot.ollama_ram_gb > budget_gb and snapshot.ollama_ram_gb > 0.5:
+                if not self.ram_guard_triggered:
+                    self.ram_guard_triggered = True
+                    self._set_connection_visual(
+                        "warning",
+                        "AI: LIMIT RAM PRZEKROCZONY",
+                        (
+                            f"Ollama używa {snapshot.ollama_ram_gb:.1f} GB, "
+                            f"a limit to {budget_gb:.1f} GB. Zwalniam model z pamięci."
+                        ),
+                    )
+                    self._write_log(
+                        "STRAŻNIK RAM: "
+                        f"{snapshot.ollama_ram_gb:.1f} GB > {budget_gb:.1f} GB. "
+                        "Wymuszam zwolnienie modelu."
+                    )
+                    threading.Thread(
+                        target=self._ram_guard_unload_worker,
+                        daemon=True,
+                    ).start()
+            elif snapshot.ollama_ram_gb <= budget_gb * 0.95:
+                self.ram_guard_triggered = False
 
             if self.settings.ai_provider == "ollama":
                 try:
@@ -876,9 +916,10 @@ class StudioApp(tk.Tk):
                         name = loaded.get("name") or loaded.get("model") or "model"
                         self.ollama_status_var.set(
                             f"Załadowany: {name}  |  "
-                            f"rozmiar modelu: {size_gb:.1f} GB  |  "
+                            f"model: {size_gb:.1f} GB  |  "
                             f"VRAM: {vram_gb:.1f} GB  |  "
-                            f"kontekst runtime: {ctx}"
+                            f"kontekst: {ctx}  |  "
+                            f"limit AI: {self.settings.ollama_ram_limit_percent}%"
                         )
                     else:
                         self.ollama_status_var.set(
@@ -886,12 +927,27 @@ class StudioApp(tk.Tk):
                         )
                 except Exception:
                     self.ollama_status_var.set(
-                        "Nie udało się odczytać /api/ps Ollamy."
+                        "Nie udało się odczytać stanu pamięci Ollamy."
                     )
         except Exception as exc:
             self.memory_status_var.set(f"Monitor RAM: {exc}")
 
-        self.after(2000, self._refresh_memory)
+        self.after(1000, self._refresh_memory)
+
+    def _ram_guard_unload_worker(self):
+        try:
+            model = self.settings.ollama_model
+            self.ollama.unload_model(model)
+            self.events.put(
+                ("ram_guard_unloaded", self.ollama.inspect(model))
+            )
+        except Exception as exc:
+            self.events.put(
+                ("ollama_connection_error", {
+                    "message": f"Strażnik RAM nie mógł zwolnić modelu: {exc}",
+                    "silent": True,
+                })
+            )
 
     # ------------------------------------------------------------------
     # AI health / trace
