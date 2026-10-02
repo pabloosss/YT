@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
+from agents.topics import TopicsAgent
 from core.channel_memory import ChannelMemory, FIELDS
 from core.config import load_settings
 from core.editor import FFmpegEditor
@@ -28,7 +29,7 @@ AGENTS = ["Research", "Scenariusz", "Showrunner", "Grafika", "Lektor", "Montaż"
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.8")
+        self.title("AI Content Studio v0.8.1")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -81,7 +82,10 @@ class StudioApp(tk.Tk):
         root = ttk.Frame(self, padding=16)
         root.pack(fill="both", expand=True)
         ttk.Label(root, text="AI Content Studio", font=("Segoe UI", 22, "bold")).pack(anchor="w")
-        ttk.Label(root, textvariable=self.connection, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=6)
+        connection_row = ttk.Frame(root)
+        connection_row.pack(fill="x", pady=6)
+        ttk.Label(connection_row, textvariable=self.connection, font=("Segoe UI", 11, "bold")).pack(side="left", fill="x", expand=True)
+        self._button(connection_row, "Włącz / połącz Ollamę", self.connect_ollama)
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(fill="both", expand=True)
         self.studio, self.projects, self.channel, self.settings_tab = [ttk.Frame(self.tabs, padding=12) for _ in range(4)]
@@ -102,7 +106,7 @@ class StudioApp(tk.Tk):
         entry.focus_set()
         row = ttk.Frame(self.studio)
         row.pack(fill="x")
-        self._button(row, "Znajdź tematy w internecie", self.find_topics)
+        self._button(row, "AI: znajdź tematy", self.find_topics)
         self._button(row, "Przygotuj projekt", self.start_pipeline)
         self.stop_button = ttk.Button(row, text="Zatrzymaj po etapie", state="disabled", command=self._stop)
         self.stop_button.pack(side="left", padx=8)
@@ -178,7 +182,7 @@ class StudioApp(tk.Tk):
         self._ram_text()
         ttk.Label(self.settings_tab, text="Dla 32 GB i Qwen 30B: punkt startowy 75% (około 24 GB), kontekst 4096.\n"
                   "To budżet kontrolowany przez aplikację, nie twardy limit systemowy. Inne programy też potrzebują RAM.\n"
-                  "Stare ustawienie 50% pozostaje zachowane — możesz zastosować profil 32 GB przyciskiem poniżej.", wraplength=1000).pack(anchor="w")
+                  "Stary domyślny profil Qwen 30B (50% / 8192) jest aktualizowany do 75% / 4096.", wraplength=1000).pack(anchor="w")
         row = ttk.Frame(self.settings_tab)
         row.pack(fill="x", pady=8)
         self._button(row, "Zastosuj profil 32 GB", self.ram_preset)
@@ -275,9 +279,15 @@ class StudioApp(tk.Tk):
             raise RuntimeError(f"AI: LIMIT RAM ZA NISKI. Budżet {budget:.1f} GB, szacowane minimum {required:.1f} GB. "
                                "Zastosuj profil 32 GB albo wybierz qwen3:8b w Ustawieniach.")
         additional = max(0, required - snapshot.ollama_ram_gb) if state.model_loaded else required
-        if additional + 3 > snapshot.available_gb:
-            raise RuntimeError("Za mało wolnego RAM z zapasem 3 GB dla systemu. Zamknij inne aplikacje lub wybierz mniejszy model.")
-        self.events.put(("connection", "AI: POŁĄCZONO · MODEL GOTOWY"))
+        if additional > snapshot.available_gb:
+            self.events.put(("progress", "Mało wolnego RAM. Ładuję model w ustawionym budżecie; zamknij zbędne programy, jeśli system zwalnia."))
+        self.events.put(("connection", "AI: ŁADUJĘ MODEL…"))
+        self.ollama.load_model(model=model, num_ctx=self.settings.ollama_num_ctx,
+                               keep_alive=self.settings.ollama_keep_alive)
+        confirmed = self.ollama.inspect(model)
+        if not confirmed.connected or not confirmed.model_loaded:
+            raise RuntimeError("Ollama nie potwierdziła załadowania modelu. " + confirmed.message)
+        self.events.put(("connection", "AI: POŁĄCZONO · MODEL ZAŁADOWANY"))
 
     def start_pipeline(self):
         if self.busy:
@@ -318,21 +328,43 @@ class StudioApp(tk.Tk):
         if not query:
             messagebox.showwarning("Tematy", "Wpisz dziedzinę, np. historia Polski.")
             return
+        if not self.save_settings():
+            return
+        if self.settings.demo_mode:
+            messagebox.showwarning("AI", "Włącz Ollamę przyciskiem na górze okna. Tryb DEMO nie wyszukuje tematów przez AI.")
+            return
         def work():
-            evidence = search_web(query)
-            project = self.store.create("Inspiracje: " + query)
-            project.write_json("00_sources.json", evidence)
-            text = "TEMATY Z INTERNETU\nWybierz inspirację i wpisz konkretny temat w polu u góry.\n\n" + source_text(evidence)
-            project.write_text("00_inspiracje.txt", text)
-            return project, text
+            self._prepare_ai()
+            project = self.store.create("Tematy AI: " + query)
+            try:
+                self.ai.channel_context = self.memory.context()
+                project.write_text("00_channel_profile.txt", self.ai.channel_context)
+                def progress(message):
+                    project.write_json("state.json", {"status": "running", "agent": "Research", "message": message})
+                    self.events.put(("progress", message))
+                text = TopicsAgent(self.ai).run(subject=query, progress=progress, save=project.write_json)
+                project.write_text("00_inspiracje.txt", text)
+                project.write_json("state.json", {"status": "completed", "agent": "Research"})
+                return project, text
+            except Exception as exc:
+                project.write_json("state.json", {"status": "failed", "agent": "Research", "error": str(exc)})
+                raise
+            finally:
+                self.ai.channel_context = ""
         def done(result):
             project, text = result
             self.last_project = project.path
             self._text(self.results, text)
             self.output_tabs.select(self.results)
             self._refresh_projects()
-            self.summary.set("Znaleziono inspiracje i zapisano źródła. Wpisz wybrany temat i przygotuj projekt.")
+            self.summary.set("AI opracowało tematy i zapisało źródła. Wpisz wybrany temat i przygotuj projekt.")
         self._job("Szukam tematów w internecie", work, done)
+
+    def connect_ollama(self):
+        if self.busy:
+            return
+        self.provider.set("ollama")
+        self.model_action("connect")
 
     def model_action(self, action):
         if self.busy or not self.save_settings():
@@ -341,7 +373,12 @@ class StudioApp(tk.Tk):
         if action == "pull" and not messagebox.askyesno("Pobieranie", f"Pobrać {model}? Model może zajmować wiele GB."):
             return
         def work():
-            if action == "unload":
+            if action == "connect":
+                self.events.put(("connection", "AI: URUCHAMIAM / ŁĄCZĘ OLLAMĘ…"))
+                ok, msg = self.ollama.start_server()
+                if not ok:
+                    raise RuntimeError(msg)
+            elif action == "unload":
                 self.ollama.unload_model(model)
             elif action == "pull":
                 ok, msg = self.ollama.start_server()
@@ -354,7 +391,6 @@ class StudioApp(tk.Tk):
                 if self.settings.ai_provider != "ollama":
                     raise RuntimeError("Wybierz silnik ollama, aby załadować lokalny model.")
                 self._prepare_ai()
-                self.ollama.load_model(model=model, num_ctx=self.settings.ollama_num_ctx)
             return self.ollama.inspect(model)
         self._job("Operacja Ollama: " + action, work, lambda state: self._show_state(state))
 
@@ -510,6 +546,8 @@ class StudioApp(tk.Tk):
                 elif kind == "job_error":
                     self._set_busy(False)
                     self.summary.set("Operacja zatrzymana. Sprawdź komunikat; częściowe wyniki są w Projektach.")
+                    if self.settings.ai_provider == "ollama":
+                        self.connection.set("AI: OPERACJA NIEUDANA — " + value.split("\n")[0][:160])
                     self._refresh_projects()
                     messagebox.showerror("Operacja nie została ukończona", value)
                 elif kind == "stage":
@@ -517,6 +555,8 @@ class StudioApp(tk.Tk):
                     if agent in self.statuses:
                         self.statuses[agent].set(status)
                     self.summary.set(f"{agent}: {status}")
+                elif kind == "progress":
+                    self.summary.set(value)
                 elif kind == "connection":
                     self.connection.set(value)
                 elif kind == "poll":

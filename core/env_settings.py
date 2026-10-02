@@ -17,6 +17,7 @@ def save_ai_settings(settings: Settings, env_path: Path = Path(".env")) -> None:
         env_path.write_text("", encoding="utf-8")
 
     values = {
+        "AI_STUDIO_SETTINGS_VERSION": "3",
         "GENERATE_MEDIA": "true" if settings.generate_media else "false",
         "AI_PROVIDER": settings.ai_provider,
         "AI_STUDIO_DEMO": "true" if settings.demo_mode else "false",

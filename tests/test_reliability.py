@@ -130,3 +130,42 @@ class ReliabilityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConnectionAndTopicsTests(unittest.TestCase):
+    def test_legacy_config_migrates_to_32gb_ollama(self):
+        with patch.dict(os.environ, {"AI_PROVIDER": "demo", "AI_STUDIO_DEMO": "true",
+                                     "OLLAMA_MODEL": "qwen3:30b", "OLLAMA_RAM_LIMIT_PERCENT": "50",
+                                     "OLLAMA_NUM_CTX": "8192"}, clear=True):
+            settings = load_settings()
+            self.assertEqual(settings.ai_provider, "ollama")
+            self.assertFalse(settings.demo_mode)
+            self.assertEqual(settings.ollama_ram_limit_percent, 75)
+            self.assertEqual(settings.ollama_num_ctx, 4096)
+        with patch.dict(os.environ, {"AI_PROVIDER": "demo", "AI_STUDIO_SETTINGS_VERSION": "3"}, clear=True):
+            self.assertTrue(load_settings().demo_mode)
+
+    def test_ai_plans_queries_then_uses_real_search_results(self):
+        from agents.topics import TopicsAgent
+        from unittest.mock import MagicMock
+        ai = MagicMock(demo_mode=False)
+        ai.ask.side_effect = ['["zamek historia", "zamek archeologia"]', "Temat: zamek [1]"]
+        sources = normalize_results("query", [{"href": "https://example.org", "body": "Evidence"}])
+        saved = {}
+        with patch("agents.topics.search_web", return_value=sources) as search:
+            output = TopicsAgent(ai).run(subject="historia", save=lambda name, data: saved.update({name: data}))
+        self.assertEqual(search.call_count, 2)
+        self.assertEqual(ai.ask.call_count, 2)
+        self.assertIn("Evidence", ai.ask.call_args.kwargs["prompt"])
+        self.assertIn("https://example.org", output)
+        self.assertEqual(len(saved["00_sources.json"]["sources"]), 1)
+
+    def test_search_error_is_not_replaced_by_invented_topics(self):
+        from agents.topics import TopicsAgent
+        from unittest.mock import MagicMock
+        ai = MagicMock(demo_mode=False)
+        ai.ask.return_value = '["query"]'
+        with patch("agents.topics.search_web", side_effect=ResearchUnavailable("network")):
+            with self.assertRaises(ResearchUnavailable):
+                TopicsAgent(ai).run(subject="historia")
+        self.assertEqual(ai.ask.call_count, 1)

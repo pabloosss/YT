@@ -3,9 +3,10 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from types import SimpleNamespace
 
 with TemporaryDirectory() as temp:
-    with patch.dict(os.environ, {"PROJECTS_DIR": temp, "AI_PROVIDER": "demo", "AI_STUDIO_DEMO": "true"}):
+    with patch.dict(os.environ, {"PROJECTS_DIR": temp, "AI_PROVIDER": "demo", "AI_STUDIO_DEMO": "true", "AI_STUDIO_SETTINGS_VERSION": "2"}):
         from app import StudioApp
         with patch.object(StudioApp, "_poll"), patch.object(StudioApp, "_events"):
             app = StudioApp()
@@ -19,6 +20,23 @@ with TemporaryDirectory() as temp:
                 assert str(app.model_combo.cget("state")) == "disabled"
                 app._set_busy(False)
                 assert str(app.model_combo.cget("state")) == "normal"
+                # A 32 GB machine with 22 GB free must not be rejected by a fixed +3 GB reserve.
+                app.settings.ai_provider = "ollama"
+                app.settings.ollama_ram_limit_percent = 75
+                with patch("app.get_memory_snapshot", return_value=SimpleNamespace(total_gb=32, available_gb=22, ollama_ram_gb=0)), \
+                     patch.object(app.ollama, "start_server", return_value=(True, "ok")), \
+                     patch.object(app.ollama, "model_size_bytes", return_value=19 * 1024**3), \
+                     patch.object(app.ollama, "inspect", side_effect=[SimpleNamespace(connected=True, model_loaded=False), SimpleNamespace(connected=True, model_loaded=True)]), \
+                     patch.object(app.ollama, "load_model") as load:
+                    app._prepare_ai()
+                    load.assert_called_once()
+                # Connecting the server itself never invokes the model/RAM preflight.
+                with patch.object(app, "save_settings", return_value=True), \
+                     patch.object(app, "_job", side_effect=lambda label, work, done: work()), \
+                     patch.object(app, "_prepare_ai", side_effect=AssertionError("connection must not load model")), \
+                     patch.object(app.ollama, "start_server", return_value=(True, "ok")), \
+                     patch.object(app.ollama, "inspect"):
+                    app.model_action("connect")
                 app.memory.save({"rules": "test"})
                 project = app.store.create("preview")
                 project.write_text("02_script.txt", "hello")

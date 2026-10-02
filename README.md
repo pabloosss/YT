@@ -1,4 +1,13 @@
-# AI Content Studio v0.8
+# Poprawka v0.8.1 — połączenie i tematy wyszukiwane przez AI
+
+- Domyślny silnik to Ollama. Starsze domyślne ustawienie DEMO jest migrowane; świadomy wybór DEMO zapisany w nowej wersji pozostaje zachowany.
+- Górny przycisk „Włącz / połącz Ollamę” uruchamia serwer i sprawdza model bez ładowania go do RAM. Limit pamięci nie blokuje połączenia.
+- „AI: znajdź tematy” automatycznie przygotowuje model, zleca AI plan zapytań, wykonuje wyszukiwania i przekazuje źródła do AI, które wybiera tematy, hooki i uzasadnienia. Profil kanału jest używany. Wyniki i źródła zapisują się w Projekty.
+- Start projektu i wyszukiwanie łączą Ollamę i ładują model bez ponownego klikania. Status załadowania jest potwierdzany przez serwer.
+- Poprawiono profil 32 GB: starsze domyślne 50% / kontekst 8192 dla qwen3:30b przechodzi na 75% / 4096. Limit nadal odnosi się do rzeczywistego RAM wykrytego w systemie.
+- Usunięto sztywną blokadę „brakuje dodatkowych 3 GB”. Mała ilość wolnej pamięci daje informację, nie blokuje połączenia. Budżet modelu i monitor RAM pozostają aktywne; nie gwarantują ochrony przed wyczerpaniem pamięci.
+
+# AI Content Studio
 
 Lokalna aplikacja Windows do przygotowywania filmów YouTube/TikTok. Python + Tkinter, tekst przez Ollamę lub opcjonalnie OpenAI. Agenci pracują **kolejno, na jednym modelu**, aby nie mnożyć zużycia RAM.
 
@@ -14,9 +23,9 @@ git pull
 
 ## Prosta obsługa
 
-1. **Ustawienia**: wybierz `ollama`, model i zapisz. Dla 32 GB RAM + `qwen3:30b` użyj „Zastosuj profil 32 GB”: budżet 75%, kontekst 4096. Stare `.env` nie jest automatycznie nadpisywane nowymi limitami.
+1. **Ustawienia**: wybierz `ollama`, model i zapisz. Dla 32 GB RAM + `qwen3:30b` użyj „Zastosuj profil 32 GB”: budżet 75%, kontekst 4096. Starsze domyślne ustawienia Qwen są migrowane do profilu 32 GB.
 2. **Pamięć kanału**: wpisz odbiorców, styl, zasady i własną wiedzę; kliknij „Zapisz pamięć”.
-3. **Tworzenie**: wpisz temat. Możesz wcześniej kliknąć „Znajdź tematy w internecie” — dostaniesz inspiracje z linkami. Wpisz wybrany temat i kliknij „Przygotuj projekt”.
+3. **Tworzenie**: wpisz temat. Możesz wcześniej kliknąć „AI: znajdź tematy” — dostaniesz inspiracje z linkami. Wpisz wybrany temat i kliknij „Przygotuj projekt”.
 4. **Projekty**: przeglądaj wyniki także po ponownym uruchomieniu aplikacji. Otwórz folder, sprawdź pliki, a gotowy film możesz wysłać jako PRIVATE.
 
 Zakładka „Przebieg AI” znajduje się wewnątrz Tworzenia. Pokazuje wynik na żywo i metryki; ukryte rozumowanie nie jest wyświetlane.
@@ -54,11 +63,11 @@ Przy zmianie `PROJECTS_DIR` pamięć i historia są odczytywane z nowej lokaliza
 
 ## RAM i stabilność
 
-Domyślny budżet: 75%, suwak 20–90%, kontekst 4096. 75% z 32 GB to około 24 GB. To punkt startowy, nie gwarancja zmieszczenia każdego modelu: rozmiar zależy od wariantu, kontekstu i pozostałych procesów. Aplikacja sprawdza oszacowanie rozmiaru oraz dostępny RAM z zapasem dla systemu. Gdy model nie mieści się, wybierz np. `qwen3:8b` i pobierz go z GUI.
+Domyślny budżet: 75%, suwak 20–90%, kontekst 4096. 75% z 32 GB to około 24 GB. To punkt startowy, nie gwarancja zmieszczenia każdego modelu: rozmiar zależy od wariantu, kontekstu i pozostałych procesów. Aplikacja sprawdza oszacowanie rozmiaru oraz dostępny RAM. Gdy model nie mieści się, wybierz np. `qwen3:8b` i pobierz go z GUI.
 
 Monitor sprawdza procesy Ollamy co kilka sekund. Po przekroczeniu budżetu sygnalizuje zatrzymanie produkcji i próbuje zwolnić wybrany model. To **miękki strażnik**, nie limit systemowy ani gwarancja zapobieżenia wyczerpaniu RAM. Zwalnianie aktywnego modelu może poczekać na zakończenie żądania. Monitor obejmuje również inne procesy Ollamy, ale nie zarządza ich zadaniami.
 
-Sprawdzanie połączenia i żądania modelu odbywają się poza wątkiem interfejsu. Powtórne kliknięcie/Enter nie uruchamia równoległej produkcji. Silnik nie przełącza się sam z OpenAI/demo na Ollamę. Dla skonfigurowanej Ollamy start najpierw pokazuje realny stan, a potem próbuje uruchomić serwer.
+Sprawdzanie połączenia i żądania modelu odbywają się poza wątkiem interfejsu. Powtórne kliknięcie/Enter nie uruchamia równoległej produkcji. Jawny wybór silnika pozostaje zachowany; starszy domyślny tryb demo jest migrowany na Ollamę. Dla skonfigurowanej Ollamy start najpierw pokazuje realny stan, a potem próbuje uruchomić serwer.
 
 ## Granice wersji
 
