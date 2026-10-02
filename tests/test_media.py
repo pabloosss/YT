@@ -9,7 +9,7 @@ from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 
 from core.elevenlabs_client import ElevenLabsClient
-from core.subtitles import alignment_to_srt, clean_narration
+from core.subtitles import alignment_to_srt, clean_narration, text_to_srt
 from core.veo_client import VeoClient
 
 
@@ -46,6 +46,13 @@ class SubtitleTests(unittest.TestCase):
             self.assertIn("To jest test.", rendered)
             self.assertIn("Drugi napis.", rendered)
 
+    def test_local_subtitles_restore_interrupted_project(self):
+        with TemporaryDirectory() as temp:
+            output = text_to_srt("To jest lokalnie odtworzony napis do filmu.", Path(temp) / "narration.srt")
+            rendered = output.read_text(encoding="utf-8")
+            self.assertIn("00:00:00,000 -->", rendered)
+            self.assertIn("To jest lokalnie odtworzony", rendered)
+
     def test_elevenlabs_requires_key_before_network(self):
         with self.assertRaisesRegex(RuntimeError, "ELEVENLABS_API_KEY"):
             ElevenLabsClient("").voices()
@@ -58,8 +65,8 @@ class SubtitleTests(unittest.TestCase):
             (project / "audio").mkdir()
             (project / "subtitles").mkdir()
             (project / "02_script.txt").write_text("Gotowy tekst.", encoding="utf-8")
-            (project / "video_clips" / "shot_001.mp4").write_bytes(b"saved veo")
-            (project / "audio" / "narration.mp3").write_bytes(b"saved voice")
+            (project / "video_clips" / "shot_001.mp4").write_bytes(b"v" * 2048)
+            (project / "audio" / "narration.mp3").write_bytes(b"a" * 2048)
             (project / "subtitles" / "narration.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nTest\n", encoding="utf-8")
 
             settings = load_settings()
@@ -80,6 +87,44 @@ class SubtitleTests(unittest.TestCase):
             self.assertTrue(output.exists())
             recovery = (project / "recovery_result.json").read_text(encoding="utf-8")
             self.assertIn('"veo_called_again": false', recovery)
+
+    def test_recovery_ignores_broken_clip_and_restores_video(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = root / "interrupted_project"
+            (project / "video_clips").mkdir(parents=True)
+            (project / "audio").mkdir()
+            (project / "02_script.txt").write_text("Gotowy tekst.", encoding="utf-8")
+            (project / "04_video_prompts.json").write_text(
+                '[{"shot": 1, "prompt": "test"}]', encoding="utf-8"
+            )
+            (project / "video_clips" / "shot_001.mp4").write_bytes(b"")
+            (project / "audio" / "narration.mp3").write_bytes(b"a" * 2048)
+
+            settings = load_settings()
+            settings.projects_dir = root
+            pipeline = ContentPipeline(ProjectStore(root), OpenAIGateway(settings), settings)
+            generated = project / "video_clips" / "shot_002.mp4"
+
+            def generate_all(**_kwargs):
+                generated.write_bytes(b"v" * 2048)
+                return [generated]
+
+            def render(**kwargs):
+                self.assertEqual(kwargs["clips"], [generated])
+                output = kwargs["output"]
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"finished")
+                return output
+
+            pipeline.editor.available = lambda: True
+            pipeline.editor.render_clips = render
+            with patch.object(VeoClient, "healthcheck", return_value="ok"), \
+                 patch.object(VeoClient, "generate_all", side_effect=generate_all):
+                output = pipeline.finish_existing(project, allow_generate_veo=True)
+
+            self.assertTrue(output.exists())
+            self.assertTrue((project / "subtitles" / "narration.srt").exists())
 
 
 if __name__ == "__main__":
