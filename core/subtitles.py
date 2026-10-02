@@ -41,7 +41,7 @@ def _srt_time(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d},{milliseconds:03d}"
 
 
-def alignment_to_srt(alignment: dict, output: Path, *, words_per_caption: int = 5) -> Path:
+def alignment_to_srt(alignment: dict, output: Path, *, words_per_caption: int = 4) -> Path:
     chars = alignment.get("characters") or []
     starts = alignment.get("character_start_times_seconds") or []
     ends = alignment.get("character_end_times_seconds") or []
@@ -68,7 +68,7 @@ def alignment_to_srt(alignment: dict, output: Path, *, words_per_caption: int = 
         current.append(word)
         text = " ".join(item[0] for item in current)
         sentence_end = bool(re.search(r"[.!?…][\"”']?$", word[0]))
-        if len(current) >= words_per_caption or len(text) >= 34 or sentence_end:
+        if len(current) >= words_per_caption or len(text) >= 28 or sentence_end:
             captions.append((text, current[0][1], current[-1][2]))
             current = []
     if current:
@@ -84,7 +84,7 @@ def alignment_to_srt(alignment: dict, output: Path, *, words_per_caption: int = 
 
 
 def text_to_srt(text: str, output: Path, *, duration_seconds: float = 30.0,
-                words_per_caption: int = 5) -> Path:
+                words_per_caption: int = 4) -> Path:
     """Create approximate captions locally when narration exists but timestamps do not."""
     words = clean_narration(text).split()
     if not words:
