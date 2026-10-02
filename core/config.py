@@ -48,12 +48,13 @@ class Settings:
 
     google_api_key: str = ""
     elevenlabs_api_key: str = ""
-    veo_model: str = "veo-3.1-fast-generate-preview"
+    veo_model: str = "veo-3.1-lite-generate-preview"
     veo_aspect_ratio: str = "9:16"
     veo_resolution: str = "720p"
-    veo_max_clips: int = 2
+    veo_max_clips: int = 1
+    veo_duration_seconds: int = 4
     elevenlabs_voice_id: str = ""
-    elevenlabs_model: str = "eleven_multilingual_v2"
+    elevenlabs_model: str = "eleven_flash_v2_5"
     burn_subtitles: bool = True
     music_path: str = ""
 
@@ -98,12 +99,13 @@ def load_settings() -> Settings:
 
         google_api_key=os.getenv("GOOGLE_API_KEY", "").strip(),
         elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", "").strip(),
-        veo_model=os.getenv("VEO_MODEL", "veo-3.1-fast-generate-preview").strip(),
+        veo_model="veo-3.1-lite-generate-preview",
         veo_aspect_ratio=aspect_ratio,
         veo_resolution=os.getenv("VEO_RESOLUTION", "720p").strip() or "720p",
-        veo_max_clips=2,
+        veo_max_clips=1,
+        veo_duration_seconds=4,
         elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "").strip(),
-        elevenlabs_model=os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2").strip(),
+        elevenlabs_model="eleven_flash_v2_5",
         burn_subtitles=_as_bool(os.getenv("BURN_SUBTITLES"), default=True),
         music_path=os.getenv("MUSIC_PATH", "").strip(),
     )
