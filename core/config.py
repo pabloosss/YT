@@ -49,9 +49,9 @@ class Settings:
     google_api_key: str = ""
     elevenlabs_api_key: str = ""
     veo_model: str = "veo-3.1-fast-generate-preview"
-    veo_aspect_ratio: str = "16:9"
+    veo_aspect_ratio: str = "9:16"
     veo_resolution: str = "720p"
-    veo_max_clips: int = 8
+    veo_max_clips: int = 4
     elevenlabs_voice_id: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
     burn_subtitles: bool = True
@@ -62,9 +62,8 @@ def load_settings() -> Settings:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     ram_percent = int(os.getenv("OLLAMA_RAM_LIMIT_PERCENT", "50"))
     context = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
-    aspect_ratio = os.getenv("VEO_ASPECT_RATIO", "16:9").strip()
-    if aspect_ratio not in {"16:9", "9:16"}:
-        aspect_ratio = "16:9"
+    # Aplikacja jest wyspecjalizowana w pionowych filmach TikTok/YouTube Shorts.
+    aspect_ratio = "9:16"
 
     return Settings(
         ai_provider="ollama",
@@ -102,7 +101,7 @@ def load_settings() -> Settings:
         veo_model=os.getenv("VEO_MODEL", "veo-3.1-fast-generate-preview").strip(),
         veo_aspect_ratio=aspect_ratio,
         veo_resolution=os.getenv("VEO_RESOLUTION", "720p").strip() or "720p",
-        veo_max_clips=max(1, min(12, int(os.getenv("VEO_MAX_CLIPS", "8")))),
+        veo_max_clips=4,
         elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "").strip(),
         elevenlabs_model=os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2").strip(),
         burn_subtitles=_as_bool(os.getenv("BURN_SUBTITLES"), default=True),
