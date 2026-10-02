@@ -158,6 +158,20 @@ class ConnectionAndTopicsTests(unittest.TestCase):
         self.assertIn("https://example.org", output)
         self.assertEqual(len(saved["00_sources.json"]["sources"]), 1)
 
+    def test_ai_query_objects_are_accepted(self):
+        from agents.topics import TopicsAgent
+        from unittest.mock import MagicMock
+        ai = MagicMock(demo_mode=False)
+        ai.ask.side_effect = [
+            '[{"query": "koty religia Egiptu"}, {"query": "koty archeologia Egiptu"}]',
+            "Tematy [1]",
+        ]
+        sources = normalize_results("query", [{"href": "https://example.org", "body": "Evidence"}])
+        with patch("agents.topics.search_web", return_value=sources) as search:
+            output = TopicsAgent(ai).run(subject="koty w Egipcie")
+        self.assertEqual(search.call_count, 2)
+        self.assertIn("https://example.org", output)
+
     def test_search_error_is_not_replaced_by_invented_topics(self):
         from agents.topics import TopicsAgent
         from unittest.mock import MagicMock
