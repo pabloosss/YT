@@ -37,21 +37,25 @@ class ContentPipeline:
         status = status or (lambda _agent, _state: None)
         project = self.store.create(topic)
 
+        self.ai.set_active_agent("Research")
         status("Research", "RUNNING")
         research = self.research_agent.run(topic=topic)
         project.write_text("01_research.md", research)
         status("Research", "DONE")
 
+        self.ai.set_active_agent("Scenariusz")
         status("Scenariusz", "RUNNING")
         script = self.script_agent.run(topic=topic, research=research)
         project.write_text("02_script.txt", script)
         status("Scenariusz", "DONE")
 
+        self.ai.set_active_agent("Showrunner")
         status("Showrunner", "RUNNING")
         shots = self.showrunner_agent.run(topic=topic, script=script)
         project.write_json("03_shots.json", shots)
         status("Showrunner", "DONE")
 
+        self.ai.set_active_agent("Grafika")
         status("Grafika", "RUNNING")
         prompts = self.graphics_agent.run(topic=topic, shots=shots)
         project.write_json("04_image_prompts.json", prompts)
@@ -108,6 +112,7 @@ class ContentPipeline:
         project.write_json("06_quality.json", quality)
         status("Kontrola", "DONE" if quality["approved"] else "ISSUES")
 
+        self.ai.set_active_agent("YouTube Meta")
         status("YouTube Meta", "RUNNING")
         metadata = self.metadata_agent.run(topic=topic, script=script)
         project.write_json("07_youtube.json", metadata)
