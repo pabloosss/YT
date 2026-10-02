@@ -2,7 +2,7 @@
 
 Lokalne środowisko wieloagentowe do produkcji filmów na YouTube.
 
-## v0.5
+## v0.6
 
 Aktualny pipeline:
 
@@ -60,16 +60,22 @@ Przy pierwszym starcie program sam tworzy `.venv` i instaluje zależności.
 
 ## Szybka konfiguracja lokalnego Qwen3 przez Ollamę
 
-Jeśli masz już pobrane:
+Od v0.6 nie trzeba ręcznie uruchamiać `ollama serve` ani przełączać programu z DEMO.
 
-```powershell
-ollama run qwen3:30b
-```
+Po starcie AI Content Studio:
+- wykrywa `ollama.exe`,
+- uruchamia lokalny serwer Ollamy, jeśli nie działa,
+- sprawdza, czy `qwen3:30b` jest pobrany,
+- automatycznie przełącza tekstowych agentów na Ollamę,
+- zapisuje poprawną konfigurację do `.env`,
+- pokazuje stały status połączenia u góry aplikacji.
 
-to po pobraniu najnowszego kodu uruchom:
+Jeśli model nie jest pobrany, można użyć przycisku **Pobierz model** bez otwierania PowerShella.
+
+Dla istniejącej instalacji wystarczy:
 
 ```text
-setup_ollama.bat
+run_windows.bat
 ```
 
 Skrypt utworzy lokalny `.env`:
@@ -231,3 +237,15 @@ Zakładka **Przebieg AI** pokazuje na żywo generowany wynik, aktualny etap oraz
 ### Ważne o RAM
 
 Nie istnieje twardy limit RAM ustawiany pojedynczym parametrem zapytania. Wagi modelu mają stały koszt pamięci. Największy wpływ na dodatkową pamięć mają długość kontekstu oraz to, jak długo model pozostaje załadowany. Jeśli wymagany budżet RAM jest mniejszy niż sam model, trzeba użyć mniejszego modelu.
+
+
+## Status połączenia v0.6
+
+Górny panel pokazuje rzeczywisty stan lokalnego AI:
+- **AI: POŁĄCZONO · MODEL ZAŁADOWANY** — serwer działa i model jest w RAM,
+- **AI: POŁĄCZONO · MODEL GOTOWY** — serwer działa, model jest pobrany i załaduje się przy użyciu,
+- **AI: OLLAMA DZIAŁA · BRAK MODELU** — Ollama działa, ale wybranego modelu nie ma,
+- **AI: OLLAMA WYŁĄCZONA** — aplikacja widzi instalację, ale serwer nie odpowiada,
+- **AI: OLLAMA NIEZNALEZIONA** — aplikacja nie znalazła instalacji.
+
+Przycisk **Połącz / uruchom AI** uruchamia serwer i ładuje wybrany model. Status jest odświeżany automatycznie co kilka sekund.
