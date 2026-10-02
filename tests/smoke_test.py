@@ -28,6 +28,7 @@ def main():
             ollama_num_thread=0,
             ollama_think=True,
             ollama_unload_after_request=False,
+            ollama_ram_limit_percent=50,
 
             demo_mode=True,
             projects_dir=Path(temp),
