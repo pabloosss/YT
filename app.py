@@ -32,7 +32,7 @@ AGENTS = [
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.3")
+        self.title("AI Content Studio v0.4")
         self.geometry("1040x720")
         self.minsize(880, 620)
 
@@ -56,7 +56,12 @@ class StudioApp(tk.Tk):
 
         ttk.Label(root, text="AI CONTENT STUDIO", font=("Segoe UI", 20, "bold")).pack(anchor="w")
 
-        mode = "DEMO" if self.settings.demo_mode else f"API · {self.settings.openai_model}"
+        if self.settings.demo_mode:
+            mode = "DEMO"
+        elif self.settings.ai_provider == "ollama":
+            mode = f"OLLAMA · {self.settings.ollama_model}"
+        else:
+            mode = f"OPENAI · {self.settings.openai_model}"
         ffmpeg = "OK" if self.editor.available() else "BRAK"
         media = "ON" if self.settings.generate_media else "OFF"
         youtube = "GOTOWY" if self.publisher.is_configured() else "BRAK client_secret.json"
@@ -115,6 +120,12 @@ class StudioApp(tk.Tk):
 
         ttk.Button(
             bottom,
+            text="Sprawdź AI",
+            command=self.check_ai,
+        ).pack(side="left", padx=(8, 0))
+
+        ttk.Button(
+            bottom,
             text="FFmpeg",
             command=self.show_ffmpeg_status,
         ).pack(side="left", padx=(8, 0))
@@ -134,7 +145,7 @@ class StudioApp(tk.Tk):
         )
         self.upload_button.pack(side="left", padx=(8, 0))
 
-        ttk.Label(bottom, text="v0.3").pack(side="right")
+        ttk.Label(bottom, text="v0.4").pack(side="right")
 
     def start_pipeline(self):
         topic = self.topic_var.get().strip()
@@ -159,6 +170,17 @@ class StudioApp(tk.Tk):
             self.events.put(("done", project.path))
         except Exception as exc:
             self.events.put(("pipeline_error", str(exc)))
+
+    def check_ai(self):
+        self._write_log("AI: sprawdzam połączenie...")
+        threading.Thread(target=self._check_ai_worker, daemon=True).start()
+
+    def _check_ai_worker(self):
+        try:
+            result = self.ai.healthcheck()
+            self.events.put(("ai_check_done", result))
+        except Exception as exc:
+            self.events.put(("ai_check_error", str(exc)))
 
     def youtube_auth(self):
         if not self.publisher.is_configured():
@@ -253,6 +275,14 @@ class StudioApp(tk.Tk):
                     self._write_log(f"BŁĄD PIPELINE: {payload}")
                     self.run_button.configure(state="normal")
                     messagebox.showerror("Błąd pipeline", str(payload))
+
+                elif kind == "ai_check_done":
+                    self._write_log(f"AI: {payload}")
+                    messagebox.showinfo("AI", str(payload))
+
+                elif kind == "ai_check_error":
+                    self._write_log(f"AI BŁĄD: {payload}")
+                    messagebox.showerror("AI", str(payload))
 
                 elif kind == "youtube_auth_done":
                     self._write_log("YouTube: OAuth zakończony.")
