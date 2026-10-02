@@ -1,4 +1,4 @@
-# AI Content Studio v0.9.5 — TikTok / YouTube Shorts
+# AI Content Studio v0.9.6 — TikTok / YouTube Shorts
 
 Windowsowa aplikacja, która prowadzi projekt od tematu do kompletnego pionowego filmu 9:16. Domyślny qwen3:14b dobiera długość opowieści od 30 do 60 sekund, redaguje tekst lektora i wykonuje kontrolę planu obrazu oraz końcową kontrolę. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
 
@@ -31,12 +31,13 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 2. Lokalny Qwen przygotowuje research, scenariusz i plan ujęć.
 3. Qwen tworzy po angielsku prompty filmowe dla Veo, a osobny przebieg lokalnej kontroli poprawia ich spójność, kadr 9:16 i wolne miejsce pod napisy.
 4. Lokalny redaktor sprawdza, czy opowieść ma hook, logiczne rozwinięcie i pełny finał, bez urwanych zdań.
-5. Veo 3.1 Lite generuje 2 lub 3 pionowe klipy po 4 sekundy — zależnie od długości historii.
-6. ElevenLabs Turbo v2.5 tworzy jednego spójnego lektora i znaczniki czasu.
-7. Aplikacja buduje plik SRT.
-8. FFmpeg łączy klipy, dodaje lektora, cichą muzykę, małe napisy przy dolnej krawędzi oraz łagodne wygaszenie obrazu i dźwięku.
-9. Gotowy film trafia do projects/<projekt>/exports/final.mp4, a klatka podglądowa do thumbnail/thumbnail.jpg.
-10. Metadata Agent przygotowuje tytuł z #Shorts, opis i tagi. Końcowa kontrola Qwen podsumowuje całość i może zablokować automatyczny upload.
+5. Program dobiera darmowe ilustracje z Wikimedia Commons wraz z autorem, źródłem i licencją.
+6. ElevenLabs Turbo v2.5 tworzy lektora dopiero po zatwierdzeniu planu obrazu. Daty i lata są wcześniej zapisywane słownie po polsku.
+7. Veo 3.1 Lite generuje 2 lub 3 najważniejsze pionowe klipy po 4 sekundy — dopiero po poprawnym lektorze.
+8. FFmpeg tworzy 8–12 niepowtarzających się ujęć, animuje ilustracje i składa je bez zapętlania źródeł.
+9. Aplikacja dodaje cichą muzykę, małe napisy przy dolnej krawędzi oraz łagodne wygaszenie obrazu i dźwięku.
+10. Gotowy film trafia do projects/<projekt>/exports/final.mp4, a klatka podglądowa do thumbnail/thumbnail.jpg.
+11. Metadata Agent przygotowuje tytuł z #Shorts, opis i tagi. Końcowa kontrola Qwen podsumowuje całość i może zablokować automatyczny upload.
 
 Po połączeniu YouTube zatwierdzony film jest automatycznie wysyłany jako PRIVATE razem z miniaturą. Aplikacja zapisuje ID i link w `09_upload.json` i nie wysyła drugi raz tego samego projektu. Widoczny przycisk **WZNÓW / NAPRAW PROJEKT** kontynuuje starszy lub przerwany projekt od pierwszego brakującego etapu, zachowując prawidłowe gotowe media.
 
@@ -50,6 +51,9 @@ Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pak
 - 03_shots.json — plan ujęć;
 - 04_video_prompts.json — prompty Veo;
 - video_clips/ — klipy Veo;
+- shots/ — wszystkie gotowe ujęcia nazwane po polsku oraz pliki OPIS_UJEC.txt i ATRYBUCJE_WIKIMEDIA.txt;
+- 05_shot_manifest.json — kolejność, opis, czas, pochodzenie i tagi każdego ujęcia;
+- projects/_media_library/ — wspólna biblioteka materiałów do późniejszego ponownego użycia;
 - audio/narration.mp3 — lektor;
 - subtitles/narration.srt — zsynchronizowane napisy;
 - exports/final.mp4 — gotowy film;
@@ -57,7 +61,7 @@ Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pak
 
 ## Koszty i bezpieczeństwo
 
-Ollama, planowanie, napisy, kontrola i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Tryb zbalansowany używa 2–3 klipów Veo 3.1 Lite 720p po 4 sekundy oraz Eleven Turbo v2.5. Nie ucina mechanicznie tekstu: Qwen skraca lub rozwija go jako zamkniętą historię. Przed płatną generacją aplikacja pyta o zgodę, a przy ponowieniu wykorzystuje prawidłowe pliki już zapisane na dysku. Aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
+Ollama, planowanie, pobieranie materiałów Commons, napisy, kontrola i montaż FFmpeg są lokalne lub bezpłatne. Koszt generują Veo i ElevenLabs. Tryb hybrydowy używa 2–3 klipów Veo 3.1 Lite 720p po 4 sekundy i uzupełnia je różnymi ilustracjami Wikimedia zamiast zapętlać film. Nie ucina mechanicznie tekstu: Qwen skraca lub rozwija go jako zamkniętą historię. Przed płatną generacją aplikacja pyta o zgodę, a przy ponowieniu wykorzystuje prawidłowe pliki już zapisane na dysku. Aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
 
 Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu i są ponownie używane podczas wznowienia. Pełny projekt tworzy 2 albo 3 czterosekundowe klipy Veo Lite, dlatego przed uruchomieniem sprawdź dostęp i koszt na swoim koncie.
 
