@@ -621,14 +621,15 @@ class StudioApp(tk.Tk):
         ).start()
 
     def _refresh_models_worker(self):
+        previous = self.settings.ai_provider
         try:
-            previous = self.settings.ai_provider
             self.settings.ai_provider = "ollama"
             models = self.ai.list_models()
-            self.settings.ai_provider = previous
             self.events.put(("models_list", models))
         except Exception as exc:
             self.events.put(("ai_check_error", str(exc)))
+        finally:
+            self.settings.ai_provider = previous
 
     def unload_model_now(self):
         if self.settings.ai_provider != "ollama":
