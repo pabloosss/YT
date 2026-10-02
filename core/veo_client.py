@@ -91,15 +91,7 @@ class VeoClient:
         max_clips: int,
         progress: Callable[[int, int], None] | None = None,
     ) -> list[Path]:
-        limit = max(1, max_clips)
-        if len(prompts) <= limit:
-            selected = prompts
-        elif limit == 1:
-            selected = [prompts[0]]
-        else:
-            # Preserve the hook and finale, then distribute the remaining paid clips evenly.
-            indexes = [round(index * (len(prompts) - 1) / (limit - 1)) for index in range(limit)]
-            selected = [prompts[index] for index in indexes]
+        selected = self.select_prompts(prompts, max_clips)
         results: list[Path] = []
         for index, item in enumerate(selected, start=1):
             shot = item.get("shot") or index
@@ -111,3 +103,14 @@ class VeoClient:
                 progress(index, len(selected))
             results.append(self.generate_clip(prompt=str(item.get("prompt") or ""), output=target))
         return results
+
+    @staticmethod
+    def select_prompts(prompts: list[dict], max_clips: int) -> list[dict]:
+        limit = max(1, max_clips)
+        if len(prompts) <= limit:
+            return prompts
+        elif limit == 1:
+            return [prompts[0]]
+        # Preserve the hook and finale, then distribute the remaining paid clips evenly.
+        indexes = [round(index * (len(prompts) - 1) / (limit - 1)) for index in range(limit)]
+        return [prompts[index] for index in indexes]
