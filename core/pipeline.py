@@ -77,22 +77,47 @@ class ContentPipeline:
         status: StatusCallback | None = None,
         *,
         allow_generate_veo: bool = False,
+        online: bool = True,
     ) -> Path:
-        """Continue a saved project. Existing Veo clips are always reused."""
+        """Continue from the first missing stage. Existing paid media is always reused."""
         callback = status or (lambda _agent, _state: None)
         project_path = Path(project_path)
+        topic = project_path.name
+        metadata_path = project_path / "project.json"
+        if metadata_path.exists():
+            try:
+                topic = str(json.loads(metadata_path.read_text(encoding="utf-8")).get("title") or topic)
+            except (OSError, ValueError):
+                pass
+
         script_path = project_path / "02_script.txt"
         clips = sorted(path for path in (project_path / "video_clips").glob("*.mp4")
                        if path.is_file() and path.stat().st_size >= 1024)
         if not clips:
             clips = sorted(path for path in (project_path / "video").glob("*.mp4")
                            if path.is_file() and path.stat().st_size >= 1024)
-        if not script_path.exists():
-            raise RuntimeError("W projekcie nie ma zapisanego scenariusza 02_script.txt.")
         if not clips and not allow_generate_veo:
             raise RuntimeError("Projekt nie ma klipów Veo. Wybierz płatne dokończenie ze starego scenariusza.")
         if not self.editor.available():
             raise RuntimeError("FFmpeg nie jest dostępny. Uruchom ponownie run_windows.bat.")
+
+        if not script_path.exists() or not script_path.read_text(encoding="utf-8").strip():
+            research_path = project_path / "01_research.md"
+            if research_path.exists() and research_path.read_text(encoding="utf-8").strip():
+                research = research_path.read_text(encoding="utf-8")
+            else:
+                callback("Research", "WZNAWIAM")
+                evidence = search_web(topic) if online and not self.ai.demo_mode else None
+                (project_path / "00_sources.json").write_text(
+                    json.dumps(evidence or {"sources": [], "mode": "offline"}, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                research = self.research_agent.run(topic=topic, evidence=evidence)
+                research_path.write_text(research, encoding="utf-8")
+                callback("Research", "DONE")
+            callback("Scenariusz", "WZNAWIAM")
+            script_path.write_text(self.script_agent.run(topic=topic, research=research), encoding="utf-8")
+            callback("Scenariusz", "DONE")
 
         script = script_path.read_text(encoding="utf-8")
         audio = project_path / "audio" / "narration.mp3"
@@ -122,14 +147,6 @@ class ContentPipeline:
 
         generated_veo = False
         if not clips:
-            topic = project_path.name
-            metadata_path = project_path / "project.json"
-            if metadata_path.exists():
-                try:
-                    topic = str(json.loads(metadata_path.read_text(encoding="utf-8")).get("title") or topic)
-                except (OSError, ValueError):
-                    pass
-
             prompt_path = project_path / "04_video_prompts.json"
             if not prompt_path.exists():
                 prompt_path = project_path / "04_image_prompts.json"
@@ -178,6 +195,17 @@ class ContentPipeline:
             output=project_path / "exports" / "final.mp4",
         )
         callback("Montaż", "DONE")
+
+        youtube_path = project_path / "07_youtube.json"
+        if not youtube_path.exists():
+            self.ai.set_active_agent("YouTube Meta")
+            callback("YouTube Meta", "GENERUJĘ")
+            youtube_path.write_text(
+                json.dumps(self.metadata_agent.run(topic=topic, script=script), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            callback("YouTube Meta", "DONE")
+
         (project_path / "recovery_result.json").write_text(
             json.dumps(
                 {
@@ -191,6 +219,10 @@ class ContentPipeline:
                 ensure_ascii=False,
                 indent=2,
             ),
+            encoding="utf-8",
+        )
+        (project_path / "state.json").write_text(
+            json.dumps({"status": "completed", "agent": "YouTube Meta", "recovered": True}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         return output
