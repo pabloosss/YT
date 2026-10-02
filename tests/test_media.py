@@ -63,6 +63,24 @@ class SubtitleTests(unittest.TestCase):
                 )
             self.assertEqual(result, [existing])
 
+    def test_veo_balanced_selection_keeps_hook_and_finale(self):
+        with TemporaryDirectory() as temp:
+            output_dir = Path(temp)
+            client = VeoClient("dummy")
+            generated_shots = []
+
+            def generate(*, output, **_kwargs):
+                generated_shots.append(output.stem)
+                output.write_bytes(b"x" * 2048)
+                return output
+
+            prompts = [{"shot": index, "prompt": f"shot {index}"} for index in range(1, 7)]
+            with patch.object(client, "generate_clip", side_effect=generate):
+                client.generate_all(prompts=prompts, output_dir=output_dir, max_clips=3)
+
+            self.assertEqual(generated_shots[0], "shot_001")
+            self.assertEqual(generated_shots[-1], "shot_006")
+
     def test_clean_narration_removes_markdown_and_sources(self):
         source = "**Hook:** Koty były święte. [1]\n\n**Finał:** To koniec.\n---\n*Uwagi do źródeł*"
         self.assertEqual(clean_narration(source), "Koty były święte. To koniec.")
