@@ -75,7 +75,7 @@ class ElevenLabsClient:
         output_audio: Path,
         output_srt: Path,
         voice_id: str = "",
-        model_id: str = "eleven_flash_v2_5",
+        model_id: str = "eleven_turbo_v2_5",
     ) -> tuple[Path, Path]:
         narration = clean_narration(text)
         if not narration:
