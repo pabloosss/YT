@@ -4,14 +4,14 @@ from agents.base import BaseAgent
 from core.json_utils import loads_relaxed
 
 
-SHORT_DURATIONS = (8, 8, 8, 6)
+SHORT_DURATIONS = (4, 4, 4, 4, 4, 4, 3, 3)
 
 
 def durations_for(target_duration: int) -> tuple[int, ...]:
     if target_duration >= 55:
-        return (10, 10, 10, 10, 10, 10)
+        return (5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5)
     if target_duration >= 40:
-        return (9, 9, 9, 9, 9)
+        return (5, 5, 5, 5, 5, 4, 4, 4, 4, 4)
     return SHORT_DURATIONS
 
 
@@ -21,7 +21,10 @@ class ShowrunnerAgent(BaseAgent):
     def run(self, *, topic: str, script: str, target_duration: int = 30) -> list[dict]:
         durations = durations_for(target_duration)
         if self.ai.demo_mode:
-            purposes = ["hook", "wyjaśnienie", "rozwinięcie", "kulminacja", "konsekwencje", "finał"]
+            purposes = [
+                "hook", "kontekst", "pierwszy fakt", "wyjaśnienie", "rozwinięcie", "szczegół",
+                "zwrot", "konsekwencje", "kulminacja", "znaczenie", "domknięcie", "finał",
+            ]
             return [
                 {"shot": index, "duration_sec": duration,
                  "visual": f"Pionowe ujęcie {index} ilustrujące historię: {topic}",
