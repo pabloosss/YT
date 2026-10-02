@@ -25,6 +25,7 @@ class Settings:
     ollama_url: str
     ollama_model: str
     ollama_timeout: int
+    ollama_keep_alive: str
     demo_mode: bool
     projects_dir: Path
     ffmpeg_path: str
@@ -62,6 +63,7 @@ def load_settings() -> Settings:
         ollama_url=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
         ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:30b").strip(),
         ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "900")),
+        ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "15m").strip() or "15m",
         demo_mode=demo_mode,
         projects_dir=Path(os.getenv("PROJECTS_DIR", "projects")),
         ffmpeg_path=os.getenv("FFMPEG_PATH", "ffmpeg").strip() or "ffmpeg",
