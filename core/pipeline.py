@@ -70,16 +70,24 @@ class ContentPipeline:
         finally:
             self.ai.channel_context = ""
 
-    def finish_existing(self, project_path: Path, status: StatusCallback | None = None) -> Path:
-        """Finish a failed project using saved Veo clips. This method never calls Veo."""
+    def finish_existing(
+        self,
+        project_path: Path,
+        status: StatusCallback | None = None,
+        *,
+        allow_generate_veo: bool = False,
+    ) -> Path:
+        """Continue a saved project. Existing Veo clips are always reused."""
         callback = status or (lambda _agent, _state: None)
         project_path = Path(project_path)
         script_path = project_path / "02_script.txt"
         clips = sorted((project_path / "video_clips").glob("*.mp4"))
+        if not clips:
+            clips = sorted((project_path / "video").glob("*.mp4"))
         if not script_path.exists():
             raise RuntimeError("W projekcie nie ma zapisanego scenariusza 02_script.txt.")
-        if not clips:
-            raise RuntimeError("W projekcie nie ma zapisanych klipów w video_clips. Nie ma czego odzyskać.")
+        if not clips and not allow_generate_veo:
+            raise RuntimeError("Projekt nie ma klipów Veo. Wybierz płatne dokończenie ze starego scenariusza.")
         if not self.editor.available():
             raise RuntimeError("FFmpeg nie jest dostępny. Uruchom ponownie run_windows.bat.")
 
@@ -105,6 +113,53 @@ class ContentPipeline:
             audio = audio_file
         callback("Lektor", "DONE")
 
+        generated_veo = False
+        if not clips:
+            topic = project_path.name
+            metadata_path = project_path / "project.json"
+            if metadata_path.exists():
+                try:
+                    topic = str(json.loads(metadata_path.read_text(encoding="utf-8")).get("title") or topic)
+                except (OSError, ValueError):
+                    pass
+
+            prompt_path = project_path / "04_video_prompts.json"
+            if not prompt_path.exists():
+                prompt_path = project_path / "04_image_prompts.json"
+            if prompt_path.exists():
+                prompts = json.loads(prompt_path.read_text(encoding="utf-8"))
+            else:
+                shots_path = project_path / "03_shots.json"
+                if shots_path.exists():
+                    shots = json.loads(shots_path.read_text(encoding="utf-8"))
+                else:
+                    callback("Showrunner", "ODTWARZAM")
+                    shots = self.showrunner_agent.run(topic=topic, script=script)
+                    shots_path.write_text(json.dumps(shots, ensure_ascii=False, indent=2), encoding="utf-8")
+                callback("Grafika", "ODTWARZAM PROMPTY")
+                prompts = self.graphics_agent.run(topic=topic, shots=shots, aspect_ratio="9:16")
+                prompt_path = project_path / "04_video_prompts.json"
+                prompt_path.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            if not isinstance(prompts, list) or not prompts:
+                raise RuntimeError("Nie udało się odtworzyć promptów Veo ze starego projektu.")
+            callback("Grafika", "TEST VEO")
+            veo = VeoClient(
+                self.settings.google_api_key,
+                model=self.settings.veo_model,
+                aspect_ratio="9:16",
+                resolution=self.settings.veo_resolution,
+            )
+            veo.healthcheck()
+            clips = veo.generate_all(
+                prompts=prompts,
+                output_dir=project_path / "video_clips",
+                max_clips=4,
+                progress=lambda index, total: callback("Grafika", f"VEO {index}/{total}"),
+            )
+            generated_veo = True
+            callback("Grafika", "DONE")
+
         callback("Montaż", "RUNNING")
         music = Path(self.settings.music_path) if self.settings.music_path else None
         output = self.editor.render_clips(
@@ -119,8 +174,9 @@ class ContentPipeline:
         (project_path / "recovery_result.json").write_text(
             json.dumps(
                 {
-                    "reused_veo_clips": len(clips),
-                    "veo_called_again": False,
+                    "reused_veo_clips": 0 if generated_veo else len(clips),
+                    "generated_veo_clips": len(clips) if generated_veo else 0,
+                    "veo_called_again": generated_veo,
                     "audio": str(audio),
                     "subtitles": str(subtitles) if subtitles.exists() else None,
                     "video": str(output),
