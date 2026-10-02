@@ -32,6 +32,7 @@ class Settings:
     ollama_num_thread: int
     ollama_think: bool
     ollama_unload_after_request: bool
+    ollama_ram_limit_percent: int
 
     demo_mode: bool
     projects_dir: Path
@@ -80,6 +81,10 @@ def load_settings() -> Settings:
         ollama_unload_after_request=_as_bool(
             os.getenv("OLLAMA_UNLOAD_AFTER_REQUEST"),
             default=False,
+        ),
+        ollama_ram_limit_percent=min(
+            95,
+            max(20, int(os.getenv("OLLAMA_RAM_LIMIT_PERCENT", "50"))),
         ),
 
         demo_mode=demo_mode,
