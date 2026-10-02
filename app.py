@@ -14,12 +14,14 @@ from agents.topics import TopicsAgent
 from core.channel_memory import ChannelMemory, FIELDS
 from core.config import load_settings
 from core.editor import FFmpegEditor
+from core.elevenlabs_client import ElevenLabsClient
 from core.env_settings import save_ai_settings
 from core.ollama_manager import OllamaManager
 from core.openai_gateway import OpenAIGateway
 from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 from core.system_monitor import get_memory_snapshot
+from core.veo_client import VeoClient
 from core.web_research import search_web, source_text
 from core.youtube_publisher import UploadRequest, YouTubePublisher
 
@@ -29,7 +31,7 @@ AGENTS = ["Research", "Scenariusz", "Showrunner", "Grafika", "Lektor", "Montaż"
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.8.1")
+        self.title("AI Content Studio v0.9")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -54,6 +56,12 @@ class StudioApp(tk.Tk):
         self.topic = tk.StringVar()
         self.online = tk.BooleanVar(value=True)
         self.media = tk.BooleanVar(value=self.settings.generate_media)
+        self.google_key = tk.StringVar(value=self.settings.google_api_key)
+        self.elevenlabs_key = tk.StringVar(value=self.settings.elevenlabs_api_key)
+        self.elevenlabs_voice = tk.StringVar(value=self.settings.elevenlabs_voice_id)
+        self.video_format = tk.StringVar(value=self.settings.veo_aspect_ratio)
+        self.max_clips = tk.IntVar(value=self.settings.veo_max_clips)
+        self.media_status = tk.StringVar(value="Veo i ElevenLabs: jeszcze nie sprawdzono")
         self.provider = tk.StringVar(value=self.settings.ai_provider)
         self.model = tk.StringVar(value=self.settings.ollama_model)
         self.ram = tk.DoubleVar(value=self.settings.ollama_ram_limit_percent)
@@ -172,29 +180,65 @@ class StudioApp(tk.Tk):
     def _settings_ui(self):
         ttk.Label(self.settings_tab, text="Lokalne AI: Ollama · qwen3:8b",
                   font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        ttk.Label(self.settings_tab, text="Projekt zawsze używa tego modelu. Nie trzeba wybierać silnika ani wpisywać nazwy modelu.").pack(anchor="w", pady=(2, 8))
-        ttk.Label(self.settings_tab, textvariable=self.ram_label, font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(12, 0))
+        ttk.Label(self.settings_tab, text="Qwen lokalnie wykonuje research, scenariusz, kontrolę i plan montażu.").pack(anchor="w")
+        ttk.Label(self.settings_tab, textvariable=self.ram_label, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(8, 0))
         self.ram_scale = ttk.Scale(self.settings_tab, from_=20, to=90, variable=self.ram, command=self._ram_text)
-        self.ram_scale.pack(fill="x", pady=8)
+        self.ram_scale.pack(fill="x", pady=(2, 6))
         self._ram_text()
-        ttk.Label(self.settings_tab, text="Dla 32 GB i Qwen 8B: domyślnie 50% RAM, kontekst 4096.\n"
-                  "To budżet kontrolowany przez aplikację, nie twardy limit systemowy. Inne programy też potrzebują RAM.\n"
-                  "Model uruchamia się automatycznie przy wyszukiwaniu lub tworzeniu projektu.", wraplength=1000).pack(anchor="w")
+
+        ttk.Separator(self.settings_tab).pack(fill="x", pady=8)
+        ttk.Label(self.settings_tab, text="Pełny film", font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        self.media_check = ttk.Checkbutton(
+            self.settings_tab,
+            text="Generuj klipy Veo, lektora ElevenLabs, napisy i gotowy MP4",
+            variable=self.media,
+        )
+        self.media_check.pack(anchor="w", pady=(4, 6))
+
+        keys = ttk.Frame(self.settings_tab)
+        keys.pack(fill="x")
+        ttk.Label(keys, text="Klucz Google AI Studio / Veo").grid(row=0, column=0, sticky="w")
+        self.google_key_entry = ttk.Entry(keys, textvariable=self.google_key, show="*", width=54)
+        self.google_key_entry.grid(row=1, column=0, sticky="ew", padx=(0, 8))
+        ttk.Label(keys, text="Klucz ElevenLabs").grid(row=0, column=1, sticky="w")
+        self.elevenlabs_key_entry = ttk.Entry(keys, textvariable=self.elevenlabs_key, show="*", width=54)
+        self.elevenlabs_key_entry.grid(row=1, column=1, sticky="ew")
+        keys.columnconfigure(0, weight=1)
+        keys.columnconfigure(1, weight=1)
+
+        options = ttk.Frame(self.settings_tab)
+        options.pack(fill="x", pady=8)
+        ttk.Label(options, text="Format").grid(row=0, column=0, sticky="w")
+        self.format_combo = ttk.Combobox(
+            options, textvariable=self.video_format, state="readonly", values=("16:9", "9:16"), width=10
+        )
+        self.format_combo.grid(row=1, column=0, sticky="w", padx=(0, 18))
+        ttk.Label(options, text="Maks. liczba klipów Veo").grid(row=0, column=1, sticky="w")
+        self.clips_spin = ttk.Spinbox(options, from_=1, to=12, textvariable=self.max_clips, width=8)
+        self.clips_spin.grid(row=1, column=1, sticky="w", padx=(0, 18))
+        ttk.Label(options, text="Voice ID ElevenLabs (opcjonalnie)").grid(row=0, column=2, sticky="w")
+        self.voice_entry = ttk.Entry(options, textvariable=self.elevenlabs_voice, width=34)
+        self.voice_entry.grid(row=1, column=2, sticky="w")
+
+        ttk.Label(
+            self.settings_tab,
+            text="Klucze są zapisywane tylko w lokalnym .env (ignorowanym przez Git). "
+                 "Jeśli Voice ID jest puste, program wybierze pierwszy dostępny głos. "
+                 "Każdy klip Veo może generować koszt.",
+            wraplength=1000,
+        ).pack(anchor="w")
+        ttk.Label(self.settings_tab, textvariable=self.media_status).pack(anchor="w", pady=(4, 0))
+
         row = ttk.Frame(self.settings_tab)
         row.pack(fill="x", pady=8)
         self._button(row, "Zapisz ustawienia", self.save_settings)
+        self._button(row, "Sprawdź Veo + głos + FFmpeg", self.test_media)
         self._button(row, "Połącz / załaduj qwen3:8b", lambda: self.model_action("load"))
         row = ttk.Frame(self.settings_tab)
         row.pack(fill="x")
         self._button(row, "Pobierz model", lambda: self.model_action("pull"))
         self._button(row, "Zwolnij RAM", lambda: self.model_action("unload"))
         self._button(row, "Sprawdź AI", self.check_ai)
-        self._button(row, "Sprawdź FFmpeg", lambda: self._job("FFmpeg", self.editor.version, lambda value: messagebox.showinfo("FFmpeg", value)))
-        self.media_check = ttk.Checkbutton(self.settings_tab, text="Generuj obrazy i głos przez płatne API OpenAI oraz montuj wideo", variable=self.media)
-        self.media_check.pack(anchor="w", pady=12)
-        ttk.Label(self.settings_tab, text="Domyślnie powstaje pakiet tekstowy: research, scenariusz, ujęcia, prompty, narracja i metadata.\n"
-                  "Obrazy i głos wymagają OPENAI_API_KEY w .env. Montaż wymaga FFmpeg.\n"
-                  "Lokalna generacja obrazów/TTS i pełny autopilot nie są jeszcze zaimplementowane.", wraplength=1000).pack(anchor="w")
 
     def _ram_text(self, _=None):
         self.ram_label.set(f"Maks. RAM dla AI: {round(self.ram.get())}% (zakres 20–90%)")
@@ -215,13 +259,42 @@ class StudioApp(tk.Tk):
         self.model.set("qwen3:8b")
         self.settings.ollama_ram_limit_percent = max(20, min(90, round(self.ram.get())))
         self.settings.generate_media = self.media.get()
+        self.settings.google_api_key = self.google_key.get().strip()
+        self.settings.elevenlabs_api_key = self.elevenlabs_key.get().strip()
+        self.settings.elevenlabs_voice_id = self.elevenlabs_voice.get().strip()
+        self.settings.veo_aspect_ratio = self.video_format.get()
+        self.settings.veo_max_clips = max(1, min(12, int(self.max_clips.get())))
         try:
             save_ai_settings(self.settings)
         except Exception as exc:
             messagebox.showerror("Ustawienia", str(exc))
             return False
-        self.summary.set("Ustawienia zapisane. " + ("Tryb: pakiet tekstowy." if not self.media.get() else "Tryb: tekst i płatne media API."))
+        self.summary.set("Ustawienia zapisane. " + ("Tryb: pakiet tekstowy." if not self.media.get() else "Tryb: pełny film Veo."))
         return True
+
+    def test_media(self):
+        if not self.save_settings():
+            return
+        def work():
+            results = [
+                VeoClient(
+                    self.settings.google_api_key,
+                    model=self.settings.veo_model,
+                    aspect_ratio=self.settings.veo_aspect_ratio,
+                    resolution=self.settings.veo_resolution,
+                ).healthcheck(),
+                ElevenLabsClient(self.settings.elevenlabs_api_key).healthcheck(
+                    self.settings.elevenlabs_voice_id
+                ),
+                self.editor.version(),
+            ]
+            if not self.editor.available():
+                raise RuntimeError("FFmpeg nie jest dostępny.")
+            return "\n".join(results)
+        def done(value):
+            self.media_status.set("MEDIA: GOTOWE")
+            messagebox.showinfo("Test mediów", value)
+        self._job("Sprawdzam Veo, ElevenLabs i FFmpeg", work, done)
 
     def save_memory(self):
         try:
@@ -235,8 +308,11 @@ class StudioApp(tk.Tk):
         self.busy = busy
         for button in self.actions:
             button.configure(state="disabled" if busy else "normal")
-        for widget in (self.ram_scale, self.media_check, self.internet_check):
+        for widget in (self.ram_scale, self.media_check, self.internet_check,
+                       self.google_key_entry, self.elevenlabs_key_entry, self.voice_entry,
+                       self.clips_spin):
             widget.configure(state="disabled" if busy else "normal")
+        self.format_combo.configure(state="disabled" if busy else "readonly")
         self.stop_button.configure(state="disabled")
 
     def _job(self, label, work, done):
@@ -291,9 +367,20 @@ class StudioApp(tk.Tk):
             return
         if not self.save_settings():
             return
-        if self.media.get() and (self.settings.demo_mode or not self.settings.openai_api_key or not self.editor.available()):
-            messagebox.showwarning("Media", "Media wymagają aktywnego AI, OPENAI_API_KEY oraz FFmpeg. Wyłącz media, aby przygotować tekst.")
-            return
+        if self.media.get():
+            missing = []
+            if not self.settings.google_api_key:
+                missing.append("klucz Google AI Studio / Veo")
+            if not self.settings.elevenlabs_api_key:
+                missing.append("klucz ElevenLabs")
+            if not self.editor.available():
+                missing.append("FFmpeg")
+            if missing:
+                messagebox.showwarning(
+                    "Pełny film",
+                    "Brakuje: " + ", ".join(missing) + ". Uzupełnij Ustawienia albo wyłącz pełny film.",
+                )
+                return
         self.cancel.clear()
         online = self.online.get()
         for value in self.statuses.values():
