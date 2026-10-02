@@ -7,6 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from core.config import Settings
+from core.json_utils import strip_thinking
 
 
 class OpenAIGateway:
@@ -119,7 +120,7 @@ class OpenAIGateway:
         content = str(message.get("content") or "").strip()
         if not content:
             raise RuntimeError(f"Ollama zwróciła pustą odpowiedź: {response}")
-        return content
+        return strip_thinking(content)
 
     def _ollama_get(self, endpoint: str, *, timeout: int) -> dict:
         request = Request(
