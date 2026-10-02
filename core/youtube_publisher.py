@@ -15,6 +15,7 @@ class UploadRequest:
     privacy_status: str = "private"
     category_id: str = "22"
     tags: list[str] = field(default_factory=list)
+    thumbnail_path: Path | None = None
 
 
 class YouTubePublisher:
@@ -31,6 +32,7 @@ class YouTubePublisher:
     ):
         self.client_secret_file = client_secret_file
         self.token_file = token_file
+        self.last_thumbnail_warning = ""
 
     def validate(self, request: UploadRequest) -> None:
         if not request.video_path.exists():
@@ -39,6 +41,8 @@ class YouTubePublisher:
             raise ValueError("Nieprawidłowy privacy_status.")
         if not request.title.strip():
             raise ValueError("Tytuł filmu nie może być pusty.")
+        if request.thumbnail_path and not request.thumbnail_path.exists():
+            raise FileNotFoundError(request.thumbnail_path)
 
     def is_configured(self) -> bool:
         return self.client_secret_file.exists()
@@ -123,4 +127,13 @@ class YouTubePublisher:
         video_id = response.get("id")
         if not video_id:
             raise RuntimeError(f"YouTube nie zwrócił ID filmu: {response}")
+        self.last_thumbnail_warning = ""
+        if request.thumbnail_path:
+            try:
+                youtube.thumbnails().set(
+                    videoId=str(video_id),
+                    media_body=MediaFileUpload(str(request.thumbnail_path), mimetype="image/jpeg"),
+                ).execute()
+            except Exception as exc:
+                self.last_thumbnail_warning = "Film wysłano, ale YouTube odrzucił miniaturę: " + str(exc)
         return str(video_id)
