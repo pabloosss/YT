@@ -7,7 +7,7 @@ import queue
 import subprocess
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from agents.topics import TopicsAgent
@@ -62,6 +62,7 @@ class StudioApp(tk.Tk):
         self.video_format = tk.StringVar(value=self.settings.veo_aspect_ratio)
         self.max_clips = tk.IntVar(value=self.settings.veo_max_clips)
         self.media_status = tk.StringVar(value="Veo i ElevenLabs: jeszcze nie sprawdzono")
+        self.music_path = tk.StringVar(value=self.settings.music_path)
         self.provider = tk.StringVar(value=self.settings.ai_provider)
         self.model = tk.StringVar(value=self.settings.ollama_model)
         self.ram = tk.DoubleVar(value=self.settings.ollama_ram_limit_percent)
@@ -219,6 +220,11 @@ class StudioApp(tk.Tk):
         ttk.Label(options, text="Voice ID ElevenLabs (opcjonalnie)").grid(row=0, column=2, sticky="w")
         self.voice_entry = ttk.Entry(options, textvariable=self.elevenlabs_voice, width=34)
         self.voice_entry.grid(row=1, column=2, sticky="w")
+        ttk.Label(options, text="Muzyka w tle (opcjonalnie, własny plik)").grid(row=2, column=0, columnspan=3, sticky="w", pady=(7, 0))
+        self.music_entry = ttk.Entry(options, textvariable=self.music_path)
+        self.music_entry.grid(row=3, column=0, columnspan=2, sticky="ew", padx=(0, 8))
+        ttk.Button(options, text="Wybierz plik", command=self.choose_music).grid(row=3, column=2, sticky="w")
+        options.columnconfigure(1, weight=1)
 
         ttk.Label(
             self.settings_tab,
@@ -264,6 +270,7 @@ class StudioApp(tk.Tk):
         self.settings.elevenlabs_voice_id = self.elevenlabs_voice.get().strip()
         self.settings.veo_aspect_ratio = self.video_format.get()
         self.settings.veo_max_clips = max(1, min(12, int(self.max_clips.get())))
+        self.settings.music_path = self.music_path.get().strip()
         try:
             save_ai_settings(self.settings)
         except Exception as exc:
@@ -271,6 +278,14 @@ class StudioApp(tk.Tk):
             return False
         self.summary.set("Ustawienia zapisane. " + ("Tryb: pakiet tekstowy." if not self.media.get() else "Tryb: pełny film Veo."))
         return True
+
+    def choose_music(self):
+        path = filedialog.askopenfilename(
+            title="Wybierz muzykę do filmu",
+            filetypes=[("Audio", "*.mp3 *.wav *.m4a *.aac *.flac"), ("Wszystkie pliki", "*.*")],
+        )
+        if path:
+            self.music_path.set(path)
 
     def test_media(self):
         if not self.save_settings():
@@ -310,7 +325,7 @@ class StudioApp(tk.Tk):
             button.configure(state="disabled" if busy else "normal")
         for widget in (self.ram_scale, self.media_check, self.internet_check,
                        self.google_key_entry, self.elevenlabs_key_entry, self.voice_entry,
-                       self.clips_spin):
+                       self.music_entry, self.clips_spin):
             widget.configure(state="disabled" if busy else "normal")
         self.format_combo.configure(state="disabled" if busy else "readonly")
         self.stop_button.configure(state="disabled")
