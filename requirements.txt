@@ -5,6 +5,8 @@ google-api-python-client>=2.0.0
 google-auth>=2.0.0
 google-auth-oauthlib>=1.0.0
 google-auth-httplib2>=0.2.0
+google-genai>=1.0.0
+imageio-ffmpeg>=0.6.0
 psutil>=6.0.0
 
 ddgs>=9.5.4,<10
