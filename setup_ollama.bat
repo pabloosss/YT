@@ -14,6 +14,11 @@ echo OLLAMA_URL=http://127.0.0.1:11434
 echo OLLAMA_MODEL=qwen3:30b
 echo OLLAMA_TIMEOUT=900
 echo OLLAMA_KEEP_ALIVE=15m
+echo OLLAMA_NUM_CTX=8192
+echo OLLAMA_NUM_PREDICT=2048
+echo OLLAMA_NUM_THREAD=0
+echo OLLAMA_THINK=true
+echo OLLAMA_UNLOAD_AFTER_REQUEST=false
 echo.
 echo OPENAI_API_KEY=
 echo OPENAI_MODEL=gpt-5.6
@@ -26,6 +31,7 @@ echo FFMPEG_PATH=ffmpeg
 echo.
 echo Gotowe. AI Content Studio zostal ustawiony na lokalna Ollame:
 echo qwen3:30b
+echo Profil pamieci: Balans ^(8192 tokenow kontekstu^)
 echo.
 echo Teraz uruchom run_windows.bat
 pause
