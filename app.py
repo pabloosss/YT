@@ -222,8 +222,8 @@ class StudioApp(tk.Tk):
             options, textvariable=self.video_format, state="readonly", values=("9:16",), width=10
         )
         self.format_combo.grid(row=1, column=0, sticky="w", padx=(0, 18))
-        ttk.Label(options, text="Tryb oszczędny: 2 klipy Veo × około 8 s").grid(row=0, column=1, sticky="w")
-        self.clips_spin = ttk.Spinbox(options, from_=2, to=2, textvariable=self.max_clips, width=8, state="readonly")
+        ttk.Label(options, text="Tryb oszczędny: 1 klip Veo Lite × 4 s").grid(row=0, column=1, sticky="w")
+        self.clips_spin = ttk.Spinbox(options, from_=1, to=1, textvariable=self.max_clips, width=8, state="readonly")
         self.clips_spin.grid(row=1, column=1, sticky="w", padx=(0, 18))
         ttk.Label(options, text="Voice ID ElevenLabs (opcjonalnie)").grid(row=0, column=2, sticky="w")
         self.voice_entry = ttk.Entry(options, textvariable=self.elevenlabs_voice, width=34)
@@ -278,8 +278,11 @@ class StudioApp(tk.Tk):
         self.settings.elevenlabs_voice_id = self.elevenlabs_voice.get().strip()
         self.settings.veo_aspect_ratio = "9:16"
         self.video_format.set("9:16")
-        self.settings.veo_max_clips = 2
-        self.max_clips.set(2)
+        self.settings.veo_model = "veo-3.1-lite-generate-preview"
+        self.settings.veo_max_clips = 1
+        self.settings.veo_duration_seconds = 4
+        self.settings.elevenlabs_model = "eleven_flash_v2_5"
+        self.max_clips.set(1)
         self.settings.music_path = self.music_path.get().strip()
         try:
             save_ai_settings(self.settings)
@@ -307,6 +310,7 @@ class StudioApp(tk.Tk):
                     model=self.settings.veo_model,
                     aspect_ratio=self.settings.veo_aspect_ratio,
                     resolution=self.settings.veo_resolution,
+                    duration_seconds=self.settings.veo_duration_seconds,
                 ).healthcheck(),
                 ElevenLabsClient(self.settings.elevenlabs_api_key).healthcheck(
                     self.settings.elevenlabs_voice_id
@@ -409,7 +413,7 @@ class StudioApp(tk.Tk):
                 return
             if not messagebox.askyesno(
                 "Koszt Veo",
-                "Tryb oszczędny wygeneruje maksymalnie 2 płatne klipy Veo. "
+                "Tryb oszczędny wygeneruje 1 płatny klip Veo Lite o długości 4 sekund. "
                 "Montaż wykorzysta je ponownie do złożenia 30 sekund. Kontynuować?",
             ):
                 return
@@ -679,7 +683,7 @@ class StudioApp(tk.Tk):
         else:
             question = (
                 "Projekt nie ma prawidłowych klipów. Program wznowi go od pierwszego brakującego etapu, "
-                "a następnie wygeneruje maksymalnie 2 płatne klipy Veo. Kontynuować?"
+                "a następnie wygeneruje 1 płatny klip Veo Lite o długości 4 sekund. Kontynuować?"
             )
         if not messagebox.askyesno("Dokończ projekt", question):
             return
