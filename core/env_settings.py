@@ -35,6 +35,7 @@ def save_ai_settings(settings: Settings, env_path: Path = Path(".env")) -> None:
         "VEO_ASPECT_RATIO": settings.veo_aspect_ratio,
         "VEO_RESOLUTION": settings.veo_resolution,
         "VEO_MAX_CLIPS": str(settings.veo_max_clips),
+        "VEO_DURATION_SECONDS": str(settings.veo_duration_seconds),
         "ELEVENLABS_VOICE_ID": settings.elevenlabs_voice_id,
         "ELEVENLABS_MODEL": settings.elevenlabs_model,
         "BURN_SUBTITLES": "true" if settings.burn_subtitles else "false",
