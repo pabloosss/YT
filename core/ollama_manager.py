@@ -124,6 +124,21 @@ class OllamaManager:
                 result.append(name)
         return sorted(set(result))
 
+    def model_size_bytes(self, model: str | None = None) -> int:
+        target = model or self.model
+        payload = self._get_json("/api/tags", timeout=5)
+        target_lower = target.lower()
+
+        for item in payload.get("models", []):
+            name = str(item.get("name") or item.get("model") or "").strip()
+            if name.lower() == target_lower:
+                try:
+                    return int(item.get("size") or 0)
+                except (TypeError, ValueError):
+                    return 0
+
+        return 0
+
     def loaded_models(self) -> list[str]:
         payload = self._get_json("/api/ps", timeout=5)
         result: list[str] = []
