@@ -31,7 +31,7 @@ AGENTS = ["Research", "Scenariusz", "Showrunner", "Lektor", "Grafika", "Montaż"
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.9.2 · Shorts 30 s")
+        self.title("AI Content Studio v0.9.3 · Shorts 30 s")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -117,11 +117,13 @@ class StudioApp(tk.Tk):
         row.pack(fill="x")
         self._button(row, "AI: znajdź tematy", self.find_topics)
         self._button(row, "Generuj projekt / film", self.start_pipeline)
-        self._button(row, "Wznów ostatni projekt", self.finish_last_project)
         self.stop_button = ttk.Button(row, text="Zatrzymaj po etapie", state="disabled", command=self._stop)
         self.stop_button.pack(side="left", padx=8)
         self.internet_check = ttk.Checkbutton(row, text="Research w internecie", variable=self.online)
         self.internet_check.pack(side="left")
+        resume_row = ttk.Frame(self.studio)
+        resume_row.pack(fill="x")
+        self._button(resume_row, "WZNÓW / NAPRAW OSTATNI PROJEKT", self.finish_last_project)
         ttk.Label(self.studio, textvariable=self.summary, wraplength=1000).pack(anchor="w", pady=8)
         stages = ttk.Frame(self.studio)
         stages.pack(fill="x", pady=4)
@@ -152,9 +154,12 @@ class StudioApp(tk.Tk):
         self.file_combo.bind("<<ComboboxSelected>>", self._preview_file)
         self.preview = ScrolledText(self.projects, height=10, wrap="word", state="disabled")
         self.preview.pack(fill="both", expand=True)
+        resume = ttk.Frame(self.projects)
+        resume.pack(fill="x", pady=(0, 8))
+        self._button(resume, "WZNÓW / NAPRAW WYBRANY PROJEKT", self.finish_last_project)
+        ttk.Label(resume, text="Kontynuuje od pierwszego brakującego etapu i zachowuje gotowe klipy.").pack(side="left", padx=8)
         bottom = ttk.Frame(self.projects)
         bottom.pack(fill="x")
-        self._button(bottom, "Dokończ wybrany projekt", self.finish_last_project)
         self._button(bottom, "Połącz YouTube", self.youtube_auth)
         self._button(bottom, "Wyślij film jako PRIVATE", self.publish_last)
         ttk.Label(bottom, text="Najpierw sprawdź źródła, treść i gotowy film.").pack(side="left", padx=8)
@@ -422,6 +427,8 @@ class StudioApp(tk.Tk):
             has_video = (project.path / "exports/final.mp4").exists()
             self.summary.set("Gotowy film — sprawdź go w zakładce Projekty." if has_video else "Pakiet tekstowy gotowy. Film nie został wygenerowany. Otwórz Projekty.")
             self._text(self.results, (project.path / "02_script.txt").read_text(encoding="utf-8"))
+            if has_video:
+                self._publish_project_private(project.path, automatic=True)
         self._job("Przygotowuję projekt", work, done)
         self.stop_button.configure(state="normal")
 
@@ -573,7 +580,12 @@ class StudioApp(tk.Tk):
         self._job("Uruchamiam Ollamę", work, self._show_state)
 
     def _refresh_projects(self):
-        self.project_paths = sorted((p for p in self.settings.projects_dir.iterdir() if p.is_dir() and (p / "project.json").exists()), reverse=True)
+        markers = ("project.json", "state.json", "01_research.md", "02_script.txt", "03_shots.json")
+        self.project_paths = sorted(
+            (p for p in self.settings.projects_dir.iterdir()
+             if p.is_dir() and p.name != "_memory" and any((p / name).exists() for name in markers)),
+            reverse=True,
+        )
         self.project_combo["values"] = [p.name for p in self.project_paths]
         if self.project_paths:
             index = self.project_paths.index(self.last_project) if self.last_project in self.project_paths else 0
@@ -647,9 +659,6 @@ class StudioApp(tk.Tk):
         ]
         audio = project / "audio" / "narration.mp3"
         audio_ready = audio.exists() and audio.stat().st_size >= 1024
-        if not script.exists():
-            messagebox.showwarning("Dokańczanie", "Ten projekt nie ma zapisanego scenariusza 02_script.txt.")
-            return
         if not self.save_settings():
             return
 
@@ -665,11 +674,11 @@ class StudioApp(tk.Tk):
         if clips:
             question = (
                 f"Znaleziono {len(clips)} zapisanych klipów. Użyję ich ponownie — Veo nie zostanie wywołane "
-                "i nie naliczy nowego kosztu. Dokończyć?"
+                "i nie naliczy nowego kosztu. Brakujące etapy zostaną odtworzone. Dokończyć?"
             )
         else:
             question = (
-                "Projekt ma scenariusz, ale nie ma klipów. Po potwierdzeniu program odtworzy plan i prompty, "
+                "Projekt nie ma prawidłowych klipów. Program wznowi go od pierwszego brakującego etapu, "
                 "a następnie wygeneruje maksymalnie 2 płatne klipy Veo. Kontynuować?"
             )
         if not messagebox.askyesno("Dokończ projekt", question):
@@ -677,20 +686,21 @@ class StudioApp(tk.Tk):
 
         generate_veo = not bool(clips)
         def work():
-            if generate_veo:
-                prompt_exists = (project / "04_video_prompts.json").exists() or (project / "04_image_prompts.json").exists()
-                if not prompt_exists:
-                    self._prepare_ai()
+            text_ready = script.exists() and (project / "07_youtube.json").exists()
+            prompt_exists = (project / "04_video_prompts.json").exists() or (project / "04_image_prompts.json").exists()
+            if not text_ready or (generate_veo and not prompt_exists):
+                self._prepare_ai()
             return self.pipeline.finish_existing(
                 project,
                 allow_generate_veo=generate_veo,
+                online=self.online.get(),
                 status=lambda agent, state: self.events.put(("stage", (agent, state))),
             )
         def done(output):
             self._refresh_projects()
             detail = "Wykorzystano zapisane klipy bez nowego kosztu Veo." if clips else "Wygenerowano klipy ze starego scenariusza."
             self.summary.set("Film gotowy: " + str(output))
-            messagebox.showinfo("Film gotowy", detail + "\n" + str(output))
+            self._publish_project_private(project, automatic=True)
         self._job("Dokańczam zapisany projekt", work, done)
 
     def youtube_auth(self):
@@ -702,26 +712,47 @@ class StudioApp(tk.Tk):
     def publish_last(self):
         if not self.last_project:
             return
-        video = self.last_project / "exports/final.mp4"
+        self._publish_project_private(self.last_project, automatic=False)
+
+    def _publish_project_private(self, project: Path, *, automatic: bool):
+        video = project / "exports/final.mp4"
         if not video.exists():
             messagebox.showwarning("Brak filmu", "Ten projekt nie zawiera gotowego filmu exports/final.mp4.")
             return
+        uploaded = project / "08_upload.json"
+        if uploaded.exists():
+            try:
+                video_id = str(json.loads(uploaded.read_text(encoding="utf-8")).get("video_id") or "")
+            except (OSError, ValueError):
+                video_id = ""
+            if video_id:
+                messagebox.showinfo("YouTube", "Ten projekt jest już wysłany jako PRIVATE.\nhttps://youtu.be/" + video_id)
+                return
+        if automatic and (not self.publisher.is_configured() or not self.publisher.token_file.exists()):
+            messagebox.showinfo("Film gotowy", "Film zapisano lokalnie. Połącz YouTube, aby kolejne filmy wysyłały się automatycznie jako PRIVATE.")
+            return
         try:
-            meta = json.loads((self.last_project / "07_youtube.json").read_text(encoding="utf-8"))
+            meta = json.loads((project / "07_youtube.json").read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             messagebox.showerror("Metadata", str(exc))
             return
-        if not messagebox.askyesno("YouTube PRIVATE", f"Czy sprawdziłeś treść i film? Wysłać jako PRIVATE?\n{meta.get('title', video.stem)}"):
+        if not automatic and not messagebox.askyesno("YouTube PRIVATE", f"Wysłać jako PRIVATE?\n{meta.get('title', video.stem)}"):
             return
         request = UploadRequest(video_path=video, title=str(meta.get("title") or video.stem),
                                 description=str(meta.get("description") or ""), privacy_status="private",
                                 category_id=str(meta.get("category_id") or "22"), tags=[str(t) for t in meta.get("tags", [])])
-        project = self.last_project
         def work():
             video_id = self.publisher.upload(request)
-            (project / "08_upload.json").write_text(json.dumps({"video_id": video_id, "privacy": "private"}), encoding="utf-8")
+            uploaded.write_text(
+                json.dumps({"video_id": video_id, "privacy": "private", "url": "https://youtu.be/" + video_id}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
             return video_id
-        self._job("Wysyłam PRIVATE", work, lambda vid: messagebox.showinfo("YouTube", "Wysłano PRIVATE. ID: " + vid))
+        self._job(
+            "Automatycznie wysyłam film jako PRIVATE" if automatic else "Wysyłam PRIVATE",
+            work,
+            lambda vid: messagebox.showinfo("YouTube", "Wysłano jako PRIVATE.\nhttps://youtu.be/" + vid),
+        )
 
     def _events(self):
         # Bound work per tick so a fast stream cannot starve Tk's event loop.
