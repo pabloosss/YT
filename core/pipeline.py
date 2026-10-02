@@ -55,8 +55,10 @@ class ContentPipeline:
             }
         research_path = project_path / "01_research.md"
         shots_path = project_path / "03_shots.json"
+        visual_review_path = project_path / "04_visual_review.json"
         research = research_path.read_text(encoding="utf-8")[:5000] if research_path.exists() else "brak"
         shots = shots_path.read_text(encoding="utf-8")[:5000] if shots_path.exists() else "brak"
+        visual_review = visual_review_path.read_text(encoding="utf-8")[:4000] if visual_review_path.exists() else "brak"
         raw = self.ai.ask(
             instructions=(
                 "Jesteś końcowym redaktorem i kontrolerem YouTube Shorts. Oceń, czy historia ma hook, logiczne "
@@ -67,6 +69,7 @@ class ContentPipeline:
             ),
             prompt=(
                 f"TEMAT: {topic}\nRESEARCH:\n{research}\n\nLEKTOR:\n{narration}\n\nUJĘCIA:\n{shots}\n\n"
+                f"KONTROLA PLANU WIZUALNEGO:\n{visual_review}\n\n"
                 f"METADATA:\n{json.dumps(metadata, ensure_ascii=False)}\n\n"
                 f"PARAMETRY FILMU:\n{json.dumps(video_info, ensure_ascii=False)}\n\n"
                 "Zwróć: approved (true/false), summary (2–4 zdania), strengths (lista), risks (lista)."
@@ -80,6 +83,54 @@ class ContentPipeline:
             "risks": [str(x) for x in data.get("risks", [])] if isinstance(data.get("risks"), list) else [],
             "video_info": video_info,
         }
+
+    def _review_visual_plan(self, *, topic: str, narration: str, shots: list[dict],
+                            prompts: list[dict]) -> tuple[list[dict], dict]:
+        """Text-only art-direction gate before any paid Veo request."""
+        if self.ai.demo_mode:
+            return prompts, {
+                "approved": True,
+                "summary": "Plan obejmuje hook, rozwinięcie i finał.",
+                "risks": [],
+                "scope": "Kontrola tekstowego planu; model nie ogląda gotowych klatek.",
+            }
+        raw = self.ai.ask(
+            instructions=(
+                "Jesteś kontrolerem artystycznym pionowego filmu 9:16. Sprawdź tekstowy plan ujęć i prompty Veo "
+                "przed płatną generacją. Każdy prompt ma odpowiadać właściwemu fragmentowi narracji, a całość musi "
+                "pokazywać hook, rozwinięcie i finał. Główny obiekt ma pozostawać w bezpiecznym centrum, dolny pas "
+                "kadru ma być spokojny pod małe napisy, a obraz nie może zawierać napisów, logo ani dialogów. "
+                "Popraw wszystkie słabe prompty. Nie twierdź, że widziałeś wygenerowane klatki. Odpowiedz tylko JSON-em."
+            ),
+            prompt=(
+                f"TEMAT: {topic}\nNARRACJA:\n{narration}\n\nUJĘCIA:\n"
+                f"{json.dumps(shots, ensure_ascii=False)}\n\nPROMPTY:\n"
+                f"{json.dumps(prompts, ensure_ascii=False)}\n\n"
+                "Zwróć: approved (true tylko gdy poprawiona lista jest gotowa), summary, risks oraz prompts. "
+                "Prompts musi być listą tej samej długości, z polami shot i prompt po angielsku."
+            ),
+        )
+        data = loads_relaxed(raw)
+        corrected = data.get("prompts") if isinstance(data, dict) else None
+        if not isinstance(corrected, list) or len(corrected) != len(prompts):
+            raise RuntimeError("Lokalna kontrola obrazu nie zwróciła kompletnego planu. Wznów projekt.")
+        normalized = []
+        for index, item in enumerate(corrected):
+            if not isinstance(item, dict) or not str(item.get("prompt") or "").strip():
+                raise RuntimeError("Lokalna kontrola obrazu zwróciła pusty prompt. Wznów projekt.")
+            normalized.append({
+                "shot": prompts[index].get("shot") or index + 1,
+                "prompt": str(item["prompt"]).strip(),
+            })
+        review = {
+            "approved": data.get("approved") is True,
+            "summary": str(data.get("summary") or "Plan wizualny sprawdzony."),
+            "risks": [str(item) for item in data.get("risks", [])] if isinstance(data.get("risks"), list) else [],
+            "scope": "Kontrola tekstowego planu; model nie ogląda gotowych klatek.",
+        }
+        if not review["approved"]:
+            raise RuntimeError("Lokalna kontrola obrazu zablokowała generowanie: " + review["summary"])
+        return normalized, review
 
     def _audio_matches(self, project_path: Path, narration: str) -> bool:
         audio = project_path / "audio" / "narration.mp3"
@@ -235,6 +286,19 @@ class ContentPipeline:
 
             if not isinstance(prompts, list) or not prompts:
                 raise RuntimeError("Nie udało się odtworzyć promptów Veo ze starego projektu.")
+            review_shots_path = project_path / "03_shots.json"
+            review_shots = (
+                json.loads(review_shots_path.read_text(encoding="utf-8"))
+                if review_shots_path.exists() else []
+            )
+            callback("Kontrola", "SPRAWDZAM PLAN OBRAZU")
+            prompts, visual_review = self._review_visual_plan(
+                topic=topic, narration=narration, shots=review_shots, prompts=prompts
+            )
+            prompt_path.write_text(json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8")
+            (project_path / "04_visual_review.json").write_text(
+                json.dumps(visual_review, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             callback("Grafika", "TEST VEO")
             veo = VeoClient(
                 self.settings.google_api_key,
@@ -268,6 +332,7 @@ class ContentPipeline:
             output=project_path / "exports" / "final.mp4",
         )
         video_info = self.editor.inspect_short(output)
+        video_info["subtitle_profile"] = self.editor.subtitle_profile()
         if not video_info["short_eligible"]:
             raise RuntimeError(
                 f"Plik nie spełnia wymagań Shorts: {video_info['width']}x{video_info['height']}, "
@@ -404,7 +469,14 @@ class ContentPipeline:
             aspect_ratio=self.settings.veo_aspect_ratio,
         )
         project.write_json("04_image_prompts.json", prompts)
+        status("Kontrola", "SPRAWDZAM PLAN OBRAZU")
+        prompts, visual_review = self._review_visual_plan(
+            topic=topic, narration=narration, shots=shots, prompts=prompts
+        )
+        project.write_json("04_image_prompts.json", prompts)
         project.write_json("04_video_prompts.json", prompts)
+        project.write_json("04_visual_review.json", visual_review)
+        status("Kontrola", "PLAN ZATWIERDZONY")
 
         video_clips: list[Path] = []
         if self.settings.generate_media:
@@ -437,6 +509,7 @@ class ContentPipeline:
                 output=project.path / "exports" / "final.mp4",
             )
             video_info = self.editor.inspect_short(video_file)
+            video_info["subtitle_profile"] = self.editor.subtitle_profile()
             if not video_info["short_eligible"]:
                 raise RuntimeError(
                     f"Plik nie spełnia wymagań Shorts: {video_info['width']}x{video_info['height']}, "
