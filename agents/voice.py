@@ -4,7 +4,7 @@ from pathlib import Path
 
 from agents.base import BaseAgent
 from core.elevenlabs_client import ElevenLabsClient
-from core.subtitles import clean_narration
+from core.subtitles import short_narration
 
 
 class VoiceAgent(BaseAgent):
@@ -18,12 +18,12 @@ class VoiceAgent(BaseAgent):
         generate_audio: bool,
         api_key: str = "",
         voice_id: str = "",
-        model: str = "eleven_multilingual_v2",
+        model: str = "eleven_flash_v2_5",
         **_legacy,
     ) -> Path | None:
         audio_dir = project_path / "audio"
         audio_dir.mkdir(parents=True, exist_ok=True)
-        clean = clean_narration(script)
+        clean = short_narration(script)
         (audio_dir / "narration.txt").write_text(clean, encoding="utf-8")
 
         if not generate_audio or self.ai.demo_mode:
