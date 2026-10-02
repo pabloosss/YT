@@ -13,13 +13,21 @@ def main():
             ai_provider="demo",
             openai_api_key="",
             openai_model="gpt-5.6",
+
             ollama_url="http://127.0.0.1:11434",
             ollama_model="qwen3:30b",
             ollama_timeout=900,
             ollama_keep_alive="15m",
+            ollama_num_ctx=8192,
+            ollama_num_predict=2048,
+            ollama_num_thread=0,
+            ollama_think=True,
+            ollama_unload_after_request=False,
+
             demo_mode=True,
             projects_dir=Path(temp),
             ffmpeg_path="ffmpeg",
+
             generate_media=False,
             image_model="gpt-image-2",
             image_size="1536x1024",
@@ -48,7 +56,12 @@ def main():
             "pipeline_result.json",
         ]
 
-        missing = [name for name in required if not (project.path / name).exists()]
+        missing = [
+            name
+            for name in required
+            if not (project.path / name).exists()
+        ]
+
         if missing:
             raise SystemExit(f"Brakuje plików: {missing}")
 
