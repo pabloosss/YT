@@ -10,9 +10,24 @@ from core.project_store import ProjectStore
 
 from core.elevenlabs_client import ElevenLabsClient
 from core.subtitles import alignment_to_srt, clean_narration
+from core.veo_client import VeoClient
 
 
 class SubtitleTests(unittest.TestCase):
+    def test_veo_reuses_existing_clip_without_api_call(self):
+        with TemporaryDirectory() as temp:
+            output_dir = Path(temp)
+            existing = output_dir / "shot_001.mp4"
+            existing.write_bytes(b"x" * 2048)
+            client = VeoClient("dummy")
+            with patch.object(client, "generate_clip", side_effect=AssertionError("Veo must not be called")):
+                result = client.generate_all(
+                    prompts=[{"shot": 1, "prompt": "first"}],
+                    output_dir=output_dir,
+                    max_clips=1,
+                )
+            self.assertEqual(result, [existing])
+
     def test_clean_narration_removes_markdown_and_sources(self):
         source = "**Hook:** Koty były święte. [1]\n\n**Finał:** To koniec.\n---\n*Uwagi do źródeł*"
         self.assertEqual(clean_narration(source), "Koty były święte. To koniec.")
