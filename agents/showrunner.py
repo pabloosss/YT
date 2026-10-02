@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 from agents.base import BaseAgent
+from core.json_utils import loads_relaxed
 
 
 class ShowrunnerAgent(BaseAgent):
@@ -26,7 +26,7 @@ class ShowrunnerAgent(BaseAgent):
                 "Zwróć tablicę JSON. Każdy element ma: shot, duration_sec, visual, camera, lighting, purpose."
             ),
         )
-        data = json.loads(raw)
+        data = loads_relaxed(raw)
         if not isinstance(data, list):
             raise ValueError("Showrunner nie zwrócił tablicy JSON.")
         return data
