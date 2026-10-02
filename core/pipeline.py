@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 import json
+import math
 import threading
 
 from agents.graphics import GraphicsAgent
@@ -16,6 +17,7 @@ from core.channel_memory import ChannelMemory
 from core.config import Settings
 from core.editor import FFmpegEditor
 from core.elevenlabs_client import ElevenLabsClient
+from core.json_utils import loads_relaxed
 from core.openai_gateway import OpenAIGateway
 from core.project_store import ProjectStore
 from core.subtitles import text_to_srt
@@ -40,6 +42,55 @@ class ContentPipeline:
         self.voice_agent = VoiceAgent(ai)
         self.quality_agent = QualityAgent()
         self.metadata_agent = MetadataAgent(ai)
+
+    def _final_ai_review(self, *, project_path: Path, topic: str, narration: str,
+                         metadata: dict, video_info: dict) -> dict:
+        if self.ai.demo_mode:
+            return {
+                "approved": bool(video_info.get("short_eligible")),
+                "summary": "Kompletna historia z pionowym filmem i metadanymi Shorts.",
+                "strengths": ["Pełna narracja", "Pionowy format", "Długość Shorts"],
+                "risks": [],
+                "video_info": video_info,
+            }
+        research_path = project_path / "01_research.md"
+        shots_path = project_path / "03_shots.json"
+        research = research_path.read_text(encoding="utf-8")[:5000] if research_path.exists() else "brak"
+        shots = shots_path.read_text(encoding="utf-8")[:5000] if shots_path.exists() else "brak"
+        raw = self.ai.ask(
+            instructions=(
+                "Jesteś końcowym redaktorem i kontrolerem YouTube Shorts. Oceń, czy historia ma hook, logiczne "
+                "rozwinięcie i pełne zakończenie, czy nie przeczy researchowi oraz czy metadata pasują do treści. "
+                "Uwzględnij parametry techniczne filmu. Nie twierdź, że widziałeś jego klatki. Zablokuj publikację "
+                "przy urwanej historii, poważnej sprzeczności, poziomym obrazie albo czasie ponad 3 minuty. "
+                "Odpowiadaj wyłącznie poprawnym JSON-em."
+            ),
+            prompt=(
+                f"TEMAT: {topic}\nRESEARCH:\n{research}\n\nLEKTOR:\n{narration}\n\nUJĘCIA:\n{shots}\n\n"
+                f"METADATA:\n{json.dumps(metadata, ensure_ascii=False)}\n\n"
+                f"PARAMETRY FILMU:\n{json.dumps(video_info, ensure_ascii=False)}\n\n"
+                "Zwróć: approved (true/false), summary (2–4 zdania), strengths (lista), risks (lista)."
+            ),
+        )
+        data = loads_relaxed(raw)
+        return {
+            "approved": data.get("approved") is True and bool(video_info.get("short_eligible")),
+            "summary": str(data.get("summary") or "Brak podsumowania."),
+            "strengths": [str(x) for x in data.get("strengths", [])] if isinstance(data.get("strengths"), list) else [],
+            "risks": [str(x) for x in data.get("risks", [])] if isinstance(data.get("risks"), list) else [],
+            "video_info": video_info,
+        }
+
+    def _audio_matches(self, project_path: Path, narration: str) -> bool:
+        audio = project_path / "audio" / "narration.mp3"
+        manifest = project_path / "audio" / "voice_settings.json"
+        if not audio.exists() or audio.stat().st_size < 1024 or not manifest.exists():
+            return False
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            return data.get("model") == self.settings.elevenlabs_model and data.get("narration") == narration
+        except (OSError, ValueError):
+            return False
 
     def run(self, topic: str, status: StatusCallback | None = None, *, online: bool = True,
             cancel: threading.Event | None = None):
@@ -120,9 +171,15 @@ class ContentPipeline:
             callback("Scenariusz", "DONE")
 
         script = script_path.read_text(encoding="utf-8")
+        callback("Scenariusz", "REDAKCJA KOŃCOWA")
+        narration = self.script_agent.prepare_for_voice(topic=topic, script=script)
+        script_path.write_text(narration, encoding="utf-8")
+        (project_path / "05_narration.txt").write_text(narration, encoding="utf-8")
+        planned_duration = 30 if len(narration.split()) <= 70 else 45 if len(narration.split()) <= 100 else 60
+        callback("Scenariusz", "DONE")
         audio = project_path / "audio" / "narration.mp3"
         subtitles = project_path / "subtitles" / "narration.srt"
-        audio_ready = audio.exists() and audio.stat().st_size >= 1024
+        audio_ready = self._audio_matches(project_path, narration)
         if not audio_ready:
             callback("Lektor", "TEST API")
             ElevenLabsClient(self.settings.elevenlabs_api_key).healthcheck(
@@ -130,7 +187,7 @@ class ContentPipeline:
             )
             callback("Lektor", "GENERUJĘ")
             audio_file = self.voice_agent.run(
-                script=script,
+                script=narration,
                 project_path=project_path,
                 generate_audio=True,
                 api_key=self.settings.elevenlabs_api_key,
@@ -140,13 +197,22 @@ class ContentPipeline:
             if audio_file is None:
                 raise RuntimeError("Nie udało się wygenerować lektora.")
             audio = audio_file
-        elif not subtitles.exists() or subtitles.stat().st_size == 0:
-            callback("Lektor", "ODTWARZAM NAPISY LOKALNIE")
-            text_to_srt(script, subtitles, duration_seconds=30)
         callback("Lektor", "DONE")
 
+        audio_seconds = self.editor.media_duration(audio)
+        if audio_seconds > 58:
+            raise RuntimeError(
+                f"Lektor trwa {audio_seconds:.1f} s i nie zmieści się w limicie 60 s. "
+                "Lokalny redaktor musi skrócić scenariusz; wznów projekt."
+            )
+        target_duration = max(30, min(60, math.ceil(audio_seconds + 2)))
+        if not subtitles.exists() or subtitles.stat().st_size == 0:
+            callback("Lektor", "ODTWARZAM NAPISY LOKALNIE")
+            text_to_srt(narration, subtitles, duration_seconds=audio_seconds)
+        desired_clips = 2 if target_duration <= 45 else 3
+
         generated_veo = False
-        if not clips:
+        if len(clips) < desired_clips and allow_generate_veo:
             prompt_path = project_path / "04_video_prompts.json"
             if not prompt_path.exists():
                 prompt_path = project_path / "04_image_prompts.json"
@@ -158,7 +224,9 @@ class ContentPipeline:
                     shots = json.loads(shots_path.read_text(encoding="utf-8"))
                 else:
                     callback("Showrunner", "ODTWARZAM")
-                    shots = self.showrunner_agent.run(topic=topic, script=script)
+                    shots = self.showrunner_agent.run(
+                        topic=topic, script=narration, target_duration=planned_duration
+                    )
                     shots_path.write_text(json.dumps(shots, ensure_ascii=False, indent=2), encoding="utf-8")
                 callback("Grafika", "ODTWARZAM PROMPTY")
                 prompts = self.graphics_agent.run(topic=topic, shots=shots, aspect_ratio="9:16")
@@ -176,14 +244,17 @@ class ContentPipeline:
                 duration_seconds=self.settings.veo_duration_seconds,
             )
             veo.healthcheck()
-            clips = veo.generate_all(
+            generated_clips = veo.generate_all(
                 prompts=prompts,
                 output_dir=project_path / "video_clips",
-                max_clips=self.settings.veo_max_clips,
+                max_clips=min(desired_clips, self.settings.veo_max_clips),
                 progress=lambda index, total: callback("Grafika", f"VEO {index}/{total}"),
             )
-            generated_veo = True
+            clips = sorted(set(clips + generated_clips))
+            generated_veo = bool(generated_clips)
             callback("Grafika", "DONE")
+        if not clips:
+            raise RuntimeError("Projekt nie ma prawidłowych klipów Veo do montażu.")
 
         callback("Montaż", "RUNNING")
         music = Path(self.settings.music_path) if self.settings.music_path else None
@@ -193,8 +264,16 @@ class ContentPipeline:
             subtitles=subtitles if self.settings.burn_subtitles else None,
             music=music,
             aspect_ratio="9:16",
+            duration_seconds=target_duration,
             output=project_path / "exports" / "final.mp4",
         )
+        video_info = self.editor.inspect_short(output)
+        if not video_info["short_eligible"]:
+            raise RuntimeError(
+                f"Plik nie spełnia wymagań Shorts: {video_info['width']}x{video_info['height']}, "
+                f"{video_info['duration_seconds']} s."
+            )
+        thumbnail = self.editor.create_thumbnail(output, project_path / "thumbnail" / "thumbnail.jpg")
         callback("Montaż", "DONE")
 
         youtube_path = project_path / "07_youtube.json"
@@ -202,10 +281,24 @@ class ContentPipeline:
             self.ai.set_active_agent("YouTube Meta")
             callback("YouTube Meta", "GENERUJĘ")
             youtube_path.write_text(
-                json.dumps(self.metadata_agent.run(topic=topic, script=script), ensure_ascii=False, indent=2),
+                json.dumps(self.metadata_agent.run(topic=topic, script=narration), ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
             callback("YouTube Meta", "DONE")
+
+        metadata = json.loads(youtube_path.read_text(encoding="utf-8"))
+        callback("Kontrola", "PODSUMOWANIE AI")
+        review = self._final_ai_review(
+            project_path=project_path,
+            topic=topic,
+            narration=narration,
+            metadata=metadata,
+            video_info=video_info,
+        )
+        (project_path / "08_ai_review.json").write_text(
+            json.dumps(review, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        callback("Kontrola", "ZATWIERDZONE" if review["approved"] else "BLOKADA")
 
         (project_path / "recovery_result.json").write_text(
             json.dumps(
@@ -216,6 +309,9 @@ class ContentPipeline:
                     "audio": str(audio),
                     "subtitles": str(subtitles) if subtitles.exists() else None,
                     "video": str(output),
+                    "duration_seconds": target_duration,
+                    "thumbnail": str(thumbnail),
+                    "ai_review_approved": review["approved"],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -223,7 +319,7 @@ class ContentPipeline:
             encoding="utf-8",
         )
         (project_path / "state.json").write_text(
-            json.dumps({"status": "completed", "agent": "YouTube Meta", "recovered": True}, ensure_ascii=False, indent=2),
+            json.dumps({"status": "completed", "agent": "Kontrola", "recovered": True}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         return output
@@ -262,20 +358,25 @@ class ContentPipeline:
         status("Scenariusz", "RUNNING")
         script = self.script_agent.run(topic=topic, research=research)
         project.write_text("02_script.txt", script)
+        narration = self.script_agent.prepare_for_voice(topic=topic, script=script)
+        project.write_text("02_script.txt", narration)
+        project.write_text("05_narration.txt", narration)
+        planned_duration = 30 if len(narration.split()) <= 70 else 45 if len(narration.split()) <= 100 else 60
         status("Scenariusz", "DONE")
 
         self.ai.set_active_agent("Showrunner")
         status("Showrunner", "RUNNING")
-        shots = self.showrunner_agent.run(topic=topic, script=script)
+        shots = self.showrunner_agent.run(
+            topic=topic, script=narration, target_duration=planned_duration
+        )
         project.write_json("03_shots.json", shots)
         status("Showrunner", "DONE")
 
         # Generate the inexpensive voice before billable video clips. A TTS error can no longer
         # waste completed Veo generations.
         status("Lektor", "GENERUJĘ")
-        project.write_text("05_narration.txt", script)
         audio_file = self.voice_agent.run(
-            script=script,
+            script=narration,
             project_path=project.path,
             generate_audio=self.settings.generate_media,
             api_key=self.settings.elevenlabs_api_key,
@@ -284,6 +385,16 @@ class ContentPipeline:
         )
         subtitle_file = project.path / "subtitles" / "narration.srt"
         status("Lektor", "DONE" if audio_file else "TEXT ONLY")
+        if audio_file:
+            audio_seconds = self.editor.media_duration(audio_file)
+            if audio_seconds > 58:
+                raise RuntimeError(
+                    f"Lektor trwa {audio_seconds:.1f} s. Lokalny redaktor musi skrócić tekst poniżej 60 sekund."
+                )
+            target_duration = max(30, min(60, math.ceil(audio_seconds + 2)))
+        else:
+            target_duration = 30
+        desired_clips = 2 if target_duration <= 45 else 3
 
         self.ai.set_active_agent("Grafika")
         status("Grafika", "PROMPTY")
@@ -307,7 +418,7 @@ class ContentPipeline:
             video_clips = veo.generate_all(
                 prompts=prompts,
                 output_dir=project.path / "video_clips",
-                max_clips=self.settings.veo_max_clips,
+                max_clips=min(desired_clips, self.settings.veo_max_clips),
                 progress=lambda index, total: status("Grafika", f"VEO {index}/{total}"),
             )
         status("Grafika", "DONE" if video_clips else "PROMPTS ONLY")
@@ -322,10 +433,22 @@ class ContentPipeline:
                 subtitles=subtitle_file if self.settings.burn_subtitles else None,
                 music=music,
                 aspect_ratio=self.settings.veo_aspect_ratio,
+                duration_seconds=target_duration,
                 output=project.path / "exports" / "final.mp4",
+            )
+            video_info = self.editor.inspect_short(video_file)
+            if not video_info["short_eligible"]:
+                raise RuntimeError(
+                    f"Plik nie spełnia wymagań Shorts: {video_info['width']}x{video_info['height']}, "
+                    f"{video_info['duration_seconds']} s."
+                )
+            thumbnail_file = self.editor.create_thumbnail(
+                video_file, project.path / "thumbnail" / "thumbnail.jpg"
             )
             status("Montaż", "DONE")
         else:
+            video_info = {}
+            thumbnail_file = None
             status("Montaż", "SKIPPED")
 
         status("Kontrola", "RUNNING")
@@ -341,9 +464,24 @@ class ContentPipeline:
 
         self.ai.set_active_agent("YouTube Meta")
         status("YouTube Meta", "RUNNING")
-        metadata = self.metadata_agent.run(topic=topic, script=script)
+        metadata = self.metadata_agent.run(topic=topic, script=narration)
         project.write_json("07_youtube.json", metadata)
         status("YouTube Meta", "DONE")
+
+        if video_file:
+            self.ai.set_active_agent("Kontrola")
+            status("Kontrola", "PODSUMOWANIE AI")
+            review = self._final_ai_review(
+                project_path=project.path,
+                topic=topic,
+                narration=narration,
+                metadata=metadata,
+                video_info=video_info,
+            )
+            project.write_json("08_ai_review.json", review)
+            status("Kontrola", "ZATWIERDZONE" if review["approved"] else "BLOKADA")
+        else:
+            review = None
 
         project.write_json(
             "pipeline_result.json",
@@ -354,6 +492,9 @@ class ContentPipeline:
                 "audio": str(audio_file) if audio_file else None,
                 "subtitles": str(subtitle_file) if subtitle_file.exists() else None,
                 "video": str(video_file) if video_file else None,
+                "duration_seconds": target_duration,
+                "thumbnail": str(thumbnail_file) if thumbnail_file else None,
+                "ai_review_approved": bool(review and review["approved"]),
                 "quality_approved": bool(quality["approved"]),
             },
         )
