@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-import math
 from pathlib import Path
 import time
 
@@ -93,8 +92,14 @@ class VeoClient:
         progress: Callable[[int, int], None] | None = None,
     ) -> list[Path]:
         limit = max(1, max_clips)
-        step = max(1, math.ceil(len(prompts) / limit))
-        selected = prompts[::step][:limit]
+        if len(prompts) <= limit:
+            selected = prompts
+        elif limit == 1:
+            selected = [prompts[0]]
+        else:
+            # Preserve the hook and finale, then distribute the remaining paid clips evenly.
+            indexes = [round(index * (len(prompts) - 1) / (limit - 1)) for index in range(limit)]
+            selected = [prompts[index] for index in indexes]
         results: list[Path] = []
         for index, item in enumerate(selected, start=1):
             shot = item.get("shot") or index
