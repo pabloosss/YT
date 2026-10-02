@@ -459,6 +459,12 @@ class StudioApp(tk.Tk):
 
         ttk.Button(
             controls,
+            text="Pobierz model",
+            command=self.pull_model_now,
+        ).pack(side="left", padx=(8, 0))
+
+        ttk.Button(
+            controls,
             text="Zwolnij RAM",
             command=self.unload_model_now,
         ).pack(side="left", padx=(8, 0))
@@ -1102,6 +1108,66 @@ class StudioApp(tk.Tk):
                         str(payload),
                     )
 
+                elif kind == "ollama_connection":
+                    data = dict(payload)
+                    state = data["state"]
+                    silent = bool(data.get("silent"))
+                    error = data.get("error")
+
+                    self.connect_ai_button.configure(state="normal")
+                    self._apply_ollama_state(state)
+
+                    if state.connected:
+                        self.settings.ai_provider = "ollama"
+                        self.settings.demo_mode = False
+                        self.settings.ollama_model = (
+                            self.model_var.get().strip()
+                            or self.settings.ollama_model
+                        )
+                        self.provider_var.set("ollama")
+                        self.model_var.set(self.settings.ollama_model)
+                        self.model_combo["values"] = state.models
+                        self._update_header()
+                        self._write_log(f"Ollama: {state.message}")
+                        if not silent:
+                            messagebox.showinfo("Lokalne AI", state.message)
+                    else:
+                        detail = str(error or state.message)
+                        self._write_log(f"Ollama: {detail}")
+                        if not silent:
+                            messagebox.showwarning("Lokalne AI", detail)
+
+                elif kind == "ollama_connection_error":
+                    data = dict(payload)
+                    message = str(data.get("message") or "Nieznany błąd Ollamy.")
+                    silent = bool(data.get("silent"))
+                    self.connect_ai_button.configure(state="normal")
+                    self._set_connection_visual(
+                        "error",
+                        "AI: NIE POŁĄCZONO",
+                        message,
+                    )
+                    self._write_log(f"Ollama BŁĄD: {message}")
+                    if not silent:
+                        messagebox.showerror("Lokalne AI", message)
+
+                elif kind == "ollama_state":
+                    self._apply_ollama_state(payload)
+
+                elif kind == "model_missing":
+                    self.connect_ai_button.configure(state="normal")
+                    self._apply_ollama_state(payload)
+                    messagebox.showwarning(
+                        "Brak modelu",
+                        f"Nie znaleziono {self.settings.ollama_model}. Kliknij „Pobierz model”.",
+                    )
+
+                elif kind == "model_pulled":
+                    self.connect_ai_button.configure(state="normal")
+                    self._apply_ollama_state(payload)
+                    self._write_log("Ollama: model został pobrany.")
+                    self.connect_ollama()
+
                 elif kind == "ai_check_done":
                     self._write_log(f"AI: {payload}")
                     messagebox.showinfo("AI", str(payload))
@@ -1121,12 +1187,13 @@ class StudioApp(tk.Tk):
                     )
 
                 elif kind == "model_unloaded":
+                    self._apply_ollama_state(payload)
                     self._write_log(
                         "Ollama: model został zwolniony z pamięci."
                     )
                     messagebox.showinfo(
                         "Ollama",
-                        "Model został zwolniony z RAM/VRAM.",
+                        "Model został zwolniony z RAM/VRAM. Połączenie z serwerem nadal działa.",
                     )
 
                 elif kind == "youtube_auth_done":
@@ -1174,6 +1241,73 @@ class StudioApp(tk.Tk):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _set_connection_visual(
+        self,
+        state: str,
+        title: str,
+        detail: str,
+    ):
+        self.connection_state = state
+        self.connection_status_var.set(title)
+        self.connection_detail_var.set(detail)
+
+        palette = {
+            "connected_loaded": ("#176b32", "#ffffff"),
+            "connected": ("#2e7d32", "#ffffff"),
+            "warning": ("#a35a00", "#ffffff"),
+            "error": ("#a12622", "#ffffff"),
+            "checking": ("#5b6470", "#ffffff"),
+        }
+        background, foreground = palette.get(
+            state,
+            ("#5b6470", "#ffffff"),
+        )
+        self.connection_label.configure(
+            background=background,
+            foreground=foreground,
+        )
+
+    def _apply_ollama_state(self, state):
+        if state.server_running and state.model_installed:
+            if state.model_loaded:
+                self._set_connection_visual(
+                    "connected_loaded",
+                    "AI: POŁĄCZONO · MODEL ZAŁADOWANY",
+                    state.message,
+                )
+            else:
+                self._set_connection_visual(
+                    "connected",
+                    "AI: POŁĄCZONO · MODEL GOTOWY",
+                    state.message,
+                )
+
+            self.provider_var.set("ollama")
+            if state.models:
+                self.model_combo["values"] = state.models
+            return
+
+        if state.server_running and not state.model_installed:
+            self._set_connection_visual(
+                "warning",
+                "AI: OLLAMA DZIAŁA · BRAK MODELU",
+                state.message,
+            )
+            return
+
+        if state.installed:
+            self._set_connection_visual(
+                "error",
+                "AI: OLLAMA WYŁĄCZONA",
+                state.message,
+            )
+        else:
+            self._set_connection_visual(
+                "error",
+                "AI: OLLAMA NIEZNALEZIONA",
+                state.message,
+            )
 
     def _update_header(self):
         if self.settings.demo_mode:
