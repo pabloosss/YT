@@ -152,7 +152,7 @@ class StudioApp(tk.Tk):
         self.preview.pack(fill="both", expand=True)
         bottom = ttk.Frame(self.projects)
         bottom.pack(fill="x")
-        self._button(bottom, "Dokończ bez ponownego Veo", self.finish_last_project)
+        self._button(bottom, "Dokończ wybrany projekt", self.finish_last_project)
         self._button(bottom, "Połącz YouTube", self.youtube_auth)
         self._button(bottom, "Wyślij film jako PRIVATE", self.publish_last)
         ttk.Label(bottom, text="Najpierw sprawdź źródła, treść i gotowy film.").pack(side="left", padx=8)
@@ -601,30 +601,57 @@ class StudioApp(tk.Tk):
 
     def finish_last_project(self):
         if not self.last_project:
-            messagebox.showwarning("Projekt", "Wybierz niedokończony projekt.")
+            messagebox.showwarning("Projekt", "Wybierz projekt w zakładce Projekty.")
             return
-        clips = list((self.last_project / "video_clips").glob("*.mp4"))
-        if not clips:
-            messagebox.showwarning("Odzyskiwanie", "Ten projekt nie ma zapisanych klipów Veo.")
+        project = self.last_project
+        script = project / "02_script.txt"
+        clips = list((project / "video_clips").glob("*.mp4")) + list((project / "video").glob("*.mp4"))
+        audio_ready = (project / "audio" / "narration.mp3").exists() and (project / "subtitles" / "narration.srt").exists()
+        if not script.exists():
+            messagebox.showwarning("Dokańczanie", "Ten projekt nie ma zapisanego scenariusza 02_script.txt.")
             return
         if not self.save_settings():
             return
-        if not messagebox.askyesno(
-            "Bez ponownego Veo",
-            f"Użyję {len(clips)} zapisanych klipów. Veo nie zostanie ponownie wywołane. Dokończyć głos i montaż?",
-        ):
+
+        missing = []
+        if not audio_ready and not self.settings.elevenlabs_api_key:
+            missing.append("klucz ElevenLabs")
+        if not clips and not self.settings.google_api_key:
+            missing.append("klucz Google/Veo")
+        if missing:
+            messagebox.showwarning("Dokańczanie", "Brakuje: " + ", ".join(missing) + ".")
             return
-        project = self.last_project
+
+        if clips:
+            question = (
+                f"Znaleziono {len(clips)} zapisanych klipów. Użyję ich ponownie — Veo nie zostanie wywołane "
+                "i nie naliczy nowego kosztu. Dokończyć?"
+            )
+        else:
+            question = (
+                "Projekt ma scenariusz, ale nie ma klipów. Po potwierdzeniu program odtworzy plan i prompty, "
+                "a następnie wygeneruje 4 płatne klipy Veo. Kontynuować?"
+            )
+        if not messagebox.askyesno("Dokończ projekt", question):
+            return
+
+        generate_veo = not bool(clips)
         def work():
+            if generate_veo:
+                prompt_exists = (project / "04_video_prompts.json").exists() or (project / "04_image_prompts.json").exists()
+                if not prompt_exists:
+                    self._prepare_ai()
             return self.pipeline.finish_existing(
                 project,
+                allow_generate_veo=generate_veo,
                 status=lambda agent, state: self.events.put(("stage", (agent, state))),
             )
         def done(output):
             self._refresh_projects()
-            self.summary.set("Odzyskano film bez ponownego generowania Veo: " + str(output))
-            messagebox.showinfo("Film gotowy", "Dokończono bez ponownego kosztu Veo.\n" + str(output))
-        self._job("Dokańczam z zapisanych klipów", work, done)
+            detail = "Wykorzystano zapisane klipy bez nowego kosztu Veo." if clips else "Wygenerowano klipy ze starego scenariusza."
+            self.summary.set("Film gotowy: " + str(output))
+            messagebox.showinfo("Film gotowy", detail + "\n" + str(output))
+        self._job("Dokańczam zapisany projekt", work, done)
 
     def youtube_auth(self):
         if not self.publisher.is_configured():
