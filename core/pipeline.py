@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
+import threading
 
 from agents.graphics import GraphicsAgent
 from agents.metadata import MetadataAgent
@@ -9,13 +11,13 @@ from agents.research import ResearchAgent
 from agents.script import ScriptAgent
 from agents.showrunner import ShowrunnerAgent
 from agents.voice import VoiceAgent
-from core.config import Settings
 from core.channel_memory import ChannelMemory
-from core.web_research import search_web
-import threading
+from core.config import Settings
 from core.editor import FFmpegEditor
 from core.openai_gateway import OpenAIGateway
 from core.project_store import ProjectStore
+from core.veo_client import VeoClient
+from core.web_research import search_web
 
 
 StatusCallback = Callable[[str, str], None]
@@ -67,7 +69,6 @@ class ContentPipeline:
             self.ai.channel_context = ""
 
     def _run_project(self, topic, project, status, online):
-
         self.ai.set_active_agent("Research")
         status("Research", "RUNNING")
         evidence = search_web(topic) if online and not self.ai.demo_mode else None
@@ -89,20 +90,31 @@ class ContentPipeline:
         status("Showrunner", "DONE")
 
         self.ai.set_active_agent("Grafika")
-        status("Grafika", "RUNNING")
-        prompts = self.graphics_agent.run(topic=topic, shots=shots)
+        status("Grafika", "PROMPTY")
+        prompts = self.graphics_agent.run(
+            topic=topic,
+            shots=shots,
+            aspect_ratio=self.settings.veo_aspect_ratio,
+        )
+        # Old filename stays for compatibility with projects and quality checks.
         project.write_json("04_image_prompts.json", prompts)
+        project.write_json("04_video_prompts.json", prompts)
 
-        image_files = []
+        video_clips: list[Path] = []
         if self.settings.generate_media:
-            image_files = self.graphics_agent.render(
-                prompts=prompts,
-                project_path=project.path,
-                model=self.settings.image_model,
-                size=self.settings.image_size,
-                quality=self.settings.image_quality,
+            veo = VeoClient(
+                self.settings.google_api_key,
+                model=self.settings.veo_model,
+                aspect_ratio=self.settings.veo_aspect_ratio,
+                resolution=self.settings.veo_resolution,
             )
-        status("Grafika", "DONE")
+            video_clips = veo.generate_all(
+                prompts=prompts,
+                output_dir=project.path / "video_clips",
+                max_clips=self.settings.veo_max_clips,
+                progress=lambda index, total: status("Grafika", f"VEO {index}/{total}"),
+            )
+        status("Grafika", "DONE" if video_clips else "PROMPTS ONLY")
 
         status("Lektor", "RUNNING")
         project.write_text("05_narration.txt", script)
@@ -110,26 +122,23 @@ class ContentPipeline:
             script=script,
             project_path=project.path,
             generate_audio=self.settings.generate_media,
-            model=self.settings.tts_model,
-            voice=self.settings.tts_voice,
-            instructions=self.settings.tts_instructions,
+            api_key=self.settings.elevenlabs_api_key,
+            voice_id=self.settings.elevenlabs_voice_id,
+            model=self.settings.elevenlabs_model,
         )
+        subtitle_file = project.path / "subtitles" / "narration.srt"
         status("Lektor", "DONE" if audio_file else "TEXT ONLY")
 
         status("Montaż", "RUNNING")
         video_file = None
-        if self.settings.generate_media and image_files and self.editor.available():
-            durations = []
-            for shot in shots[:len(image_files)]:
-                try:
-                    durations.append(max(int(shot.get("duration_sec", 4)), 1))
-                except (TypeError, ValueError):
-                    durations.append(4)
-
-            video_file = self.editor.render_storyboard(
-                images=image_files,
-                durations=durations,
+        if self.settings.generate_media and video_clips:
+            music = Path(self.settings.music_path) if self.settings.music_path else None
+            video_file = self.editor.render_clips(
+                clips=video_clips,
                 audio=audio_file,
+                subtitles=subtitle_file if self.settings.burn_subtitles else None,
+                music=music,
+                aspect_ratio=self.settings.veo_aspect_ratio,
                 output=project.path / "exports" / "final.mp4",
             )
             status("Montaż", "DONE")
@@ -139,8 +148,10 @@ class ContentPipeline:
         status("Kontrola", "RUNNING")
         quality = self.quality_agent.run(project_path=project.path, shots=shots)
         quality["media_enabled"] = self.settings.generate_media
-        quality["generated_images"] = len(image_files)
+        quality["generated_images"] = 0
+        quality["generated_clips"] = len(video_clips)
         quality["audio_generated"] = bool(audio_file)
+        quality["subtitles_generated"] = subtitle_file.exists()
         quality["video_generated"] = bool(video_file)
         project.write_json("06_quality.json", quality)
         status("Kontrola", "DONE" if quality["approved"] else "ISSUES")
@@ -155,12 +166,12 @@ class ContentPipeline:
             "pipeline_result.json",
             {
                 "project": str(project.path),
-                "images": [str(path) for path in image_files],
+                "images": [],
+                "clips": [str(path) for path in video_clips],
                 "audio": str(audio_file) if audio_file else None,
+                "subtitles": str(subtitle_file) if subtitle_file.exists() else None,
                 "video": str(video_file) if video_file else None,
                 "quality_approved": bool(quality["approved"]),
             },
         )
-
         return project
-
