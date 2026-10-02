@@ -8,7 +8,7 @@ from agents.base import BaseAgent
 class GraphicsAgent(BaseAgent):
     name = "Grafika"
 
-    def run(self, *, topic: str, shots: list[dict]) -> list[dict]:
+    def run(self, *, topic: str, shots: list[dict], aspect_ratio: str = "16:9") -> list[dict]:
         prompts = []
         for shot in shots:
             visual = shot.get("visual", "")
@@ -19,18 +19,19 @@ class GraphicsAgent(BaseAgent):
                 prompt = (
                     f"Cinematic YouTube visual about {topic}. {visual}. "
                     f"Camera: {camera}. Lighting: {lighting}. "
-                    "No text, coherent visual style across the whole video, landscape composition."
+                    f"Aspect ratio {aspect_ratio}. No text, no subtitles, coherent visual style, realistic motion."
                 )
             else:
                 prompt = self.ai.ask(
                     instructions=(
-                        "Jesteś art directorem. Tworzysz pojedynczy precyzyjny prompt do generatora obrazu. "
-                        "Dbaj o spójność stylistyczną między ujęciami. Nie dodawaj tekstu do obrazu. "
-                        "Odpowiadaj wyłącznie promptem."
+                        "Jesteś art directorem filmu. Tworzysz pojedynczy precyzyjny prompt po angielsku "
+                        "do Google Veo, opisujący 8-sekundowy klip: akcję, ruch kamery, światło i atmosferę. "
+                        "Dbaj o historyczną wiarygodność i spójność między ujęciami. "
+                        "Bez dialogów, lektora, napisów, logo i tekstu w kadrze. Odpowiadaj tylko promptem."
                     ),
                     prompt=(
                         f"Temat: {topic}\nOpis ujęcia: {visual}\nKamera: {camera}\n"
-                        f"Światło: {lighting}\nFormat docelowy: poziomy YouTube."
+                        f"Światło: {lighting}\nFormat: {aspect_ratio}. Klip ma naturalny ruch i trwa około 8 sekund."
                     ),
                 )
             prompts.append({"shot": shot.get("shot"), "prompt": prompt})
