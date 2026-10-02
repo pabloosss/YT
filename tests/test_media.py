@@ -9,11 +9,17 @@ from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 
 from core.elevenlabs_client import ElevenLabsClient
-from core.subtitles import alignment_to_srt, clean_narration, text_to_srt
+from core.subtitles import alignment_to_srt, clean_narration, short_narration, text_to_srt
 from core.veo_client import VeoClient
 
 
 class SubtitleTests(unittest.TestCase):
+    def test_short_narration_caps_paid_tts_input(self):
+        source = " ".join(f"słowo{index}" for index in range(100))
+        result = short_narration(source)
+        self.assertLessEqual(len(result.split()), 60)
+        self.assertLessEqual(len(result), 551)
+
     def test_veo_reuses_existing_clip_without_api_call(self):
         with TemporaryDirectory() as temp:
             output_dir = Path(temp)
