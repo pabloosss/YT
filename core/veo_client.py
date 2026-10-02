@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import math
 from pathlib import Path
 import time
 
@@ -89,12 +90,17 @@ class VeoClient:
         max_clips: int,
         progress: Callable[[int, int], None] | None = None,
     ) -> list[Path]:
-        selected = prompts[:max(1, max_clips)]
+        limit = max(1, max_clips)
+        step = max(1, math.ceil(len(prompts) / limit))
+        selected = prompts[::step][:limit]
         results: list[Path] = []
         for index, item in enumerate(selected, start=1):
-            if progress:
-                progress(index, len(selected))
             shot = item.get("shot") or index
             target = output_dir / f"shot_{int(shot):03d}.mp4"
+            if target.exists() and target.stat().st_size >= 1024:
+                results.append(target)
+                continue
+            if progress:
+                progress(index, len(selected))
             results.append(self.generate_clip(prompt=str(item.get("prompt") or ""), output=target))
         return results
