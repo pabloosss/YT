@@ -9,11 +9,21 @@ from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 
 from core.elevenlabs_client import ElevenLabsClient
+from core.editor import FFmpegEditor
 from core.subtitles import alignment_to_srt, clean_narration, short_narration, text_to_srt
 from core.veo_client import VeoClient
 
 
 class SubtitleTests(unittest.TestCase):
+    def test_vertical_subtitles_are_small_and_bottom_aligned(self):
+        profile = FFmpegEditor.subtitle_profile()
+        self.assertLessEqual(profile["font_size"], 20)
+        self.assertEqual(profile["alignment"], "bottom_center")
+        rendered_filter = FFmpegEditor._subtitle_filter(Path("captions.srt"))
+        self.assertIn("FontSize=20", rendered_filter)
+        self.assertIn("Alignment=2", rendered_filter)
+        self.assertIn("MarginV=45", rendered_filter)
+
     @staticmethod
     def _mock_finish_services(pipeline: ContentPipeline) -> None:
         pipeline.script_agent.prepare_for_voice = lambda **_kwargs: (
@@ -42,6 +52,15 @@ class SubtitleTests(unittest.TestCase):
             "risks": [],
             "video_info": {"short_eligible": True},
         }
+        pipeline._review_visual_plan = lambda **kwargs: (
+            kwargs["prompts"],
+            {
+                "approved": True,
+                "summary": "Plan wizualny jest spójny.",
+                "risks": [],
+                "scope": "test",
+            },
+        )
 
     def test_short_narration_caps_paid_tts_input(self):
         source = " ".join(f"słowo{index}" for index in range(100))
