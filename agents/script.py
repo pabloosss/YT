@@ -6,28 +6,28 @@ class ScriptAgent(BaseAgent):
 
     def run(self, *, topic: str, research: str) -> str:
         if self.ai.demo_mode:
-            return f"""TYTUŁ ROBOCZY: {topic}
-
-[HOOK]
-A co, jeśli najciekawsza część tej historii jest zwykle pomijana?
+            return f"""[HOOK]
+Czy wiesz, że najciekawsza część tej historii jest zwykle pomijana?
 
 [ROZWINIĘCIE]
-To jest przykładowy scenariusz trybu DEMO.
-Po podaniu klucza OpenAI agent zamieni research w gotowy tekst lektorski,
-z krótkimi zdaniami i tempem dopasowanym do YouTube.
+Oto najważniejszy fakt dotyczący tematu „{topic}”. Film rozwija go szybko, prostymi zdaniami i bez zbędnych dygresji. Każde zdanie prowadzi do kolejnego obrazu.
 
 [FINAŁ]
-I właśnie dlatego temat „{topic}” warto zobaczyć z innej strony.
+I właśnie dlatego ta krótka historia wygląda zupełnie inaczej, niż mogło się wydawać.
 """
 
         return self.ai.ask(
             instructions=(
-                "Jesteś scenarzystą YouTube. Pisz naturalnie po polsku, bez sztucznego tonu AI. "
-                "Mocny hook, konkretne tempo, krótkie zdania. Nie wymyślaj faktów spoza researchu."
+                "Jesteś scenarzystą pionowych filmów TikTok i YouTube Shorts. "
+                "Pisz naturalnie po polsku, energicznie i bez sztucznego tonu AI. "
+                "Film ma trwać około 30 sekund. Scenariusz ma mieć 55–65 słów, mocny hook w pierwszych "
+                "dwóch sekundach, szybkie rozwinięcie i krótką puentę. Używaj krótkich zdań. "
+                "Nie dodawaj powitania, próśb o subskrypcję ani komentarzy technicznych. "
+                "Nie wymyślaj faktów spoza researchu."
             ),
             prompt=(
                 f"Temat: {topic}\n\nRESEARCH:\n{research}\n\n"
-                "Napisz gotowy scenariusz lektorski: HOOK, rozwinięcie, finał. "
-                "Bez komentarzy technicznych."
+                "Napisz wyłącznie gotowy tekst lektorski z sekcjami HOOK, ROZWINIĘCIE i FINAŁ. "
+                "Łącznie 55–65 słów, tempo na około 30 sekund."
             ),
         )
