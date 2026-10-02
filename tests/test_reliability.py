@@ -153,7 +153,7 @@ class ReliabilityTests(unittest.TestCase):
             self.assertEqual(settings.ollama_ram_limit_percent, 50)
             self.assertEqual(settings.ollama_num_ctx, 4096)
             self.assertEqual(settings.veo_aspect_ratio, "9:16")
-            self.assertEqual(settings.veo_max_clips, 4)
+            self.assertEqual(settings.veo_max_clips, 2)
         with patch.dict(os.environ, {"OLLAMA_RAM_LIMIT_PERCENT": "99"}):
             self.assertEqual(load_settings().ollama_ram_limit_percent, 90)
 
