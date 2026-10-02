@@ -46,17 +46,28 @@ class Settings:
     tts_voice: str
     tts_instructions: str
 
+    google_api_key: str = ""
+    elevenlabs_api_key: str = ""
+    veo_model: str = "veo-3.1-fast-generate-preview"
+    veo_aspect_ratio: str = "16:9"
+    veo_resolution: str = "720p"
+    veo_max_clips: int = 8
+    elevenlabs_voice_id: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"
+    burn_subtitles: bool = True
+    music_path: str = ""
+
 
 def load_settings() -> Settings:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    # Text generation is intentionally fixed to one local engine/model.
-    provider = "ollama"
-    demo_mode = False
     ram_percent = int(os.getenv("OLLAMA_RAM_LIMIT_PERCENT", "50"))
     context = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
+    aspect_ratio = os.getenv("VEO_ASPECT_RATIO", "16:9").strip()
+    if aspect_ratio not in {"16:9", "9:16"}:
+        aspect_ratio = "16:9"
 
     return Settings(
-        ai_provider=provider,
+        ai_provider="ollama",
         openai_api_key=api_key,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6").strip(),
 
@@ -68,16 +79,10 @@ def load_settings() -> Settings:
         ollama_num_predict=max(128, int(os.getenv("OLLAMA_NUM_PREDICT", "2048"))),
         ollama_num_thread=max(0, int(os.getenv("OLLAMA_NUM_THREAD", "0"))),
         ollama_think=_as_bool(os.getenv("OLLAMA_THINK"), default=True),
-        ollama_unload_after_request=_as_bool(
-            os.getenv("OLLAMA_UNLOAD_AFTER_REQUEST"),
-            default=False,
-        ),
-        ollama_ram_limit_percent=min(
-            90,
-            max(20, ram_percent),
-        ),
+        ollama_unload_after_request=_as_bool(os.getenv("OLLAMA_UNLOAD_AFTER_REQUEST"), default=False),
+        ollama_ram_limit_percent=min(90, max(20, ram_percent)),
 
-        demo_mode=demo_mode,
+        demo_mode=False,
         projects_dir=Path(os.getenv("PROJECTS_DIR", "projects")),
         ffmpeg_path=os.getenv("FFMPEG_PATH", "ffmpeg").strip() or "ffmpeg",
 
@@ -91,5 +96,15 @@ def load_settings() -> Settings:
             "OPENAI_TTS_INSTRUCTIONS",
             "Mów naturalnie po polsku, energicznie, ale bez przesadnej teatralności.",
         ).strip(),
-    )
 
+        google_api_key=os.getenv("GOOGLE_API_KEY", "").strip(),
+        elevenlabs_api_key=os.getenv("ELEVENLABS_API_KEY", "").strip(),
+        veo_model=os.getenv("VEO_MODEL", "veo-3.1-fast-generate-preview").strip(),
+        veo_aspect_ratio=aspect_ratio,
+        veo_resolution=os.getenv("VEO_RESOLUTION", "720p").strip() or "720p",
+        veo_max_clips=max(1, min(12, int(os.getenv("VEO_MAX_CLIPS", "8")))),
+        elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "").strip(),
+        elevenlabs_model=os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2").strip(),
+        burn_subtitles=_as_bool(os.getenv("BURN_SUBTITLES"), default=True),
+        music_path=os.getenv("MUSIC_PATH", "").strip(),
+    )
