@@ -9,6 +9,7 @@ from unittest.mock import patch
 from core.channel_memory import ChannelMemory
 from core.config import load_settings
 from core.openai_gateway import OpenAIGateway
+from core.json_utils import loads_relaxed
 from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 from core.stream_filter import VisibleStream
@@ -41,6 +42,31 @@ class ReliabilityTests(unittest.TestCase):
         self.assertEqual(len(result["sources"][0]["excerpt"]), 700)
         with self.assertRaises(ResearchUnavailable):
             normalize_results("historia", [])
+
+    def test_repairs_missing_commas_in_showrunner_json(self):
+        raw = """{
+          "shots": [
+            {
+              "shot": "1",
+              "duration_sec": 5,
+              "visual": "Kot w cieniu"
+              "camera": "Zbliżenie",
+              "lightyng": "Ciemne",
+              "purpose": "Hook"
+            }
+          ]
+        }"""
+        data = loads_relaxed(raw)
+        self.assertEqual(data["shots"][0]["camera"], "Zbliżenie")
+
+    def test_showrunner_accepts_wrapped_shots_and_lighting_typo(self):
+        from agents.showrunner import ShowrunnerAgent
+        from unittest.mock import MagicMock
+        ai = MagicMock(demo_mode=False)
+        ai.ask.return_value = '{"shots":[{"shot":1,"duration_sec":4,"visual":"Kot","camera":"Zoom","lightyng":"Ciemne","purpose":"Hook"}]}'
+        shots = ShowrunnerAgent(ai).run(topic="koty", script="tekst")
+        self.assertEqual(len(shots), 1)
+        self.assertEqual(shots[0]["lighting"], "Ciemne")
 
     def test_think_tags_never_leak_with_any_chunk_boundary(self):
         original = "Wstęp<think>PRIVATE</think>Wynik<think>SECRET</think>Koniec"
