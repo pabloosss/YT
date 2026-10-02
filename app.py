@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import queue
 import subprocess
@@ -13,23 +14,34 @@ from core.editor import FFmpegEditor
 from core.openai_gateway import OpenAIGateway
 from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
+from core.youtube_publisher import UploadRequest, YouTubePublisher
 
 
-AGENTS = ["Research", "Scenariusz", "Showrunner", "Grafika", "Lektor"]
+AGENTS = [
+    "Research",
+    "Scenariusz",
+    "Showrunner",
+    "Grafika",
+    "Lektor",
+    "Montaż",
+    "Kontrola",
+    "YouTube Meta",
+]
 
 
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.2")
-        self.geometry("980x680")
-        self.minsize(820, 580)
+        self.title("AI Content Studio v0.3")
+        self.geometry("1040x720")
+        self.minsize(880, 620)
 
         self.settings = load_settings()
         self.store = ProjectStore(self.settings.projects_dir)
         self.ai = OpenAIGateway(self.settings)
-        self.pipeline = ContentPipeline(self.store, self.ai)
+        self.pipeline = ContentPipeline(self.store, self.ai, self.settings)
         self.editor = FFmpegEditor(self.settings.ffmpeg_path)
+        self.publisher = YouTubePublisher()
 
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.last_project: Path | None = None
@@ -46,7 +58,13 @@ class StudioApp(tk.Tk):
 
         mode = "DEMO" if self.settings.demo_mode else f"API · {self.settings.openai_model}"
         ffmpeg = "OK" if self.editor.available() else "BRAK"
-        ttk.Label(root, text=f"Tryb: {mode}    |    FFmpeg: {ffmpeg}").pack(anchor="w", pady=(2, 18))
+        media = "ON" if self.settings.generate_media else "OFF"
+        youtube = "GOTOWY" if self.publisher.is_configured() else "BRAK client_secret.json"
+
+        ttk.Label(
+            root,
+            text=f"Tryb: {mode}    |    Media: {media}    |    FFmpeg: {ffmpeg}    |    YouTube: {youtube}",
+        ).pack(anchor="w", pady=(2, 18))
 
         topic_frame = ttk.LabelFrame(root, text="Nowy projekt", padding=12)
         topic_frame.pack(fill="x")
@@ -68,9 +86,9 @@ class StudioApp(tk.Tk):
 
         for name in AGENTS:
             row = ttk.Frame(agents_frame)
-            row.pack(fill="x", pady=6)
+            row.pack(fill="x", pady=5)
             ttk.Label(row, text=name, width=16).pack(side="left")
-            ttk.Label(row, textvariable=self.status_vars[name], width=12).pack(side="left")
+            ttk.Label(row, textvariable=self.status_vars[name], width=14).pack(side="left")
 
         logs_frame = ttk.LabelFrame(middle, text="Log projektu", padding=8)
         logs_frame.pack(side="left", fill="both", expand=True, padx=(14, 0))
@@ -83,7 +101,7 @@ class StudioApp(tk.Tk):
 
         self.open_button = ttk.Button(
             bottom,
-            text="Otwórz ostatni projekt",
+            text="Otwórz projekt",
             command=self.open_last_project,
             state="disabled",
         )
@@ -93,15 +111,30 @@ class StudioApp(tk.Tk):
             bottom,
             text="Katalog projects",
             command=lambda: self._open_folder(self.settings.projects_dir),
-        ).pack(side="left", padx=8)
+        ).pack(side="left", padx=(8, 0))
 
         ttk.Button(
             bottom,
-            text="Sprawdź FFmpeg",
+            text="FFmpeg",
             command=self.show_ffmpeg_status,
-        ).pack(side="left")
+        ).pack(side="left", padx=(8, 0))
 
-        ttk.Label(bottom, text="v0.2").pack(side="right")
+        self.auth_button = ttk.Button(
+            bottom,
+            text="Połącz YouTube",
+            command=self.youtube_auth,
+        )
+        self.auth_button.pack(side="left", padx=(8, 0))
+
+        self.upload_button = ttk.Button(
+            bottom,
+            text="Wyślij PRIVATE",
+            command=self.publish_last,
+            state="disabled",
+        )
+        self.upload_button.pack(side="left", padx=(8, 0))
+
+        ttk.Label(bottom, text="v0.3").pack(side="right")
 
     def start_pipeline(self):
         topic = self.topic_var.get().strip()
@@ -110,13 +143,14 @@ class StudioApp(tk.Tk):
             return
 
         self.run_button.configure(state="disabled")
+        self.upload_button.configure(state="disabled")
         for var in self.status_vars.values():
             var.set("OCZEKUJE")
 
         self._write_log(f"Start projektu: {topic}")
-        threading.Thread(target=self._worker, args=(topic,), daemon=True).start()
+        threading.Thread(target=self._pipeline_worker, args=(topic,), daemon=True).start()
 
-    def _worker(self, topic: str):
+    def _pipeline_worker(self, topic: str):
         try:
             project = self.pipeline.run(
                 topic,
@@ -124,29 +158,122 @@ class StudioApp(tk.Tk):
             )
             self.events.put(("done", project.path))
         except Exception as exc:
-            self.events.put(("error", str(exc)))
+            self.events.put(("pipeline_error", str(exc)))
+
+    def youtube_auth(self):
+        if not self.publisher.is_configured():
+            messagebox.showwarning(
+                "YouTube OAuth",
+                "Brakuje client_secret.json. W Google Cloud utwórz OAuth Client ID typu Desktop app "
+                "dla YouTube Data API v3 i zapisz pobrany plik jako client_secret.json w katalogu programu.",
+            )
+            return
+
+        self.auth_button.configure(state="disabled")
+        self._write_log("YouTube: uruchamiam OAuth...")
+        threading.Thread(target=self._youtube_auth_worker, daemon=True).start()
+
+    def _youtube_auth_worker(self):
+        try:
+            self.publisher.authenticate()
+            self.events.put(("youtube_auth_done", None))
+        except Exception as exc:
+            self.events.put(("youtube_error", str(exc)))
+
+    def publish_last(self):
+        if not self.last_project:
+            return
+
+        video = self.last_project / "exports" / "final.mp4"
+        metadata_file = self.last_project / "07_youtube.json"
+
+        if not video.exists():
+            messagebox.showwarning(
+                "Brak filmu",
+                "Nie ma exports/final.mp4. Włącz GENERATE_MEDIA=true i upewnij się, że FFmpeg działa.",
+            )
+            return
+        if not metadata_file.exists():
+            messagebox.showwarning("Brak metadanych", "Nie znaleziono 07_youtube.json.")
+            return
+
+        metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+        title = str(metadata.get("title") or self.last_project.name)
+
+        if not messagebox.askyesno(
+            "Publikacja YouTube",
+            f"Wysłać film jako PRIVATE?\n\n{title}",
+        ):
+            return
+
+        self.upload_button.configure(state="disabled")
+        self._write_log("YouTube: rozpoczynam wysyłkę PRIVATE...")
+        threading.Thread(
+            target=self._upload_worker,
+            args=(video, metadata),
+            daemon=True,
+        ).start()
+
+    def _upload_worker(self, video: Path, metadata: dict):
+        try:
+            request = UploadRequest(
+                video_path=video,
+                title=str(metadata.get("title") or video.stem),
+                description=str(metadata.get("description") or ""),
+                privacy_status="private",
+                category_id=str(metadata.get("category_id") or "22"),
+                tags=[str(x) for x in metadata.get("tags", [])],
+            )
+            video_id = self.publisher.upload(request)
+            self.events.put(("youtube_uploaded", video_id))
+        except Exception as exc:
+            self.events.put(("youtube_error", str(exc)))
 
     def _process_events(self):
         try:
             while True:
                 kind, payload = self.events.get_nowait()
+
                 if kind == "status":
                     agent, state = payload
                     if agent in self.status_vars:
                         self.status_vars[agent].set(state)
                     self._write_log(f"{agent}: {state}")
+
                 elif kind == "done":
                     self.last_project = Path(payload)
                     self._write_log(f"Gotowe: {self.last_project}")
                     self.open_button.configure(state="normal")
                     self.run_button.configure(state="normal")
-                    messagebox.showinfo("Gotowe", "Pipeline zakończony. Pliki projektu zostały zapisane.")
-                elif kind == "error":
-                    self._write_log(f"BŁĄD: {payload}")
+                    if (self.last_project / "exports" / "final.mp4").exists():
+                        self.upload_button.configure(state="normal")
+                    messagebox.showinfo("Gotowe", "Pipeline zakończony.")
+
+                elif kind == "pipeline_error":
+                    self._write_log(f"BŁĄD PIPELINE: {payload}")
                     self.run_button.configure(state="normal")
-                    messagebox.showerror("Błąd", str(payload))
+                    messagebox.showerror("Błąd pipeline", str(payload))
+
+                elif kind == "youtube_auth_done":
+                    self._write_log("YouTube: OAuth zakończony.")
+                    self.auth_button.configure(state="normal")
+                    messagebox.showinfo("YouTube", "Połączenie z YouTube zostało zapisane w token.json.")
+
+                elif kind == "youtube_uploaded":
+                    self._write_log(f"YouTube: wysłano film. ID: {payload}")
+                    self.upload_button.configure(state="normal")
+                    messagebox.showinfo("YouTube", f"Film wysłany jako PRIVATE.\nID: {payload}")
+
+                elif kind == "youtube_error":
+                    self._write_log(f"YouTube BŁĄD: {payload}")
+                    self.auth_button.configure(state="normal")
+                    if self.last_project and (self.last_project / "exports" / "final.mp4").exists():
+                        self.upload_button.configure(state="normal")
+                    messagebox.showerror("YouTube", str(payload))
+
         except queue.Empty:
             pass
+
         self.after(100, self._process_events)
 
     def show_ffmpeg_status(self):
@@ -166,6 +293,7 @@ class StudioApp(tk.Tk):
     def _open_folder(path: Path):
         path.mkdir(parents=True, exist_ok=True)
         resolved = path.resolve()
+
         if os.name == "nt":
             os.startfile(resolved)  # type: ignore[attr-defined]
         elif os.name == "posix":
