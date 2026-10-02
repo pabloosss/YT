@@ -31,35 +31,10 @@ AGENTS = [
     "YouTube Meta",
 ]
 
-MEMORY_PROFILES = {
-    "Niski RAM": {
-        "num_ctx": 4096,
-        "num_predict": 1024,
-        "keep_alive": "0s",
-        "unload": True,
-        "think": False,
-    },
-    "Balans": {
-        "num_ctx": 8192,
-        "num_predict": 2048,
-        "keep_alive": "15m",
-        "unload": False,
-        "think": True,
-    },
-    "Jakość": {
-        "num_ctx": 16384,
-        "num_predict": 4096,
-        "keep_alive": "30m",
-        "unload": False,
-        "think": True,
-    },
-}
-
-
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.6")
+        self.title("AI Content Studio v0.7")
         self.geometry("1180x780")
         self.minsize(980, 680)
 
@@ -96,21 +71,18 @@ class StudioApp(tk.Tk):
 
         self.provider_var = tk.StringVar(value=self.settings.ai_provider)
         self.model_var = tk.StringVar(value=self.settings.ollama_model)
-        self.profile_var = tk.StringVar(value="Balans")
-        self.ctx_var = tk.StringVar(value=str(self.settings.ollama_num_ctx))
-        self.predict_var = tk.StringVar(value=str(self.settings.ollama_num_predict))
-        self.threads_var = tk.StringVar(value=str(self.settings.ollama_num_thread))
-        self.keep_alive_var = tk.StringVar(value=self.settings.ollama_keep_alive)
-        self.think_var = tk.BooleanVar(value=self.settings.ollama_think)
-        self.unload_var = tk.BooleanVar(
-            value=self.settings.ollama_unload_after_request
+        self.ram_limit_var = tk.DoubleVar(
+            value=float(self.settings.ollama_ram_limit_percent)
         )
+        self.ram_limit_text_var = tk.StringVar()
+        self.ram_guard_triggered = False
+        self.connection_action_in_progress = False
 
         self._build_ui()
         self._update_header()
         self.after(100, self._process_events)
         self.after(500, self._refresh_memory)
-        self.after(250, self.auto_connect_ollama)
+        self.after(250, self.probe_ollama_on_start)
         self.after(3000, self._periodic_connection_check)
 
     # ------------------------------------------------------------------
@@ -286,170 +258,58 @@ class StudioApp(tk.Tk):
         )
         self.upload_button.pack(side="left", padx=(8, 0))
 
-        ttk.Label(bottom, text="v0.6").pack(side="right")
+        ttk.Label(bottom, text="v0.7").pack(side="right")
 
     def _build_ai_tab(self):
         info = ttk.Label(
             self.ai_tab,
             text=(
-                "Qwen3:30b ma stały koszt pamięci na sam model. "
-                "Poniższe ustawienia regulują głównie dodatkową pamięć kontekstu, "
-                "długość generowania i czas pozostawania modelu w RAM."
+                "Sterowanie pamięcią zostało uproszczone do jednego limitu. "
+                "Suwak określa maksymalny budżet RAM dla procesów Ollamy. "
+                "Jeżeli wybrany model nie mieści się w budżecie, aplikacja go nie uruchomi."
             ),
             wraplength=1050,
         )
         info.pack(fill="x", pady=(0, 12))
 
-        settings_frame = ttk.LabelFrame(
+        model_frame = ttk.LabelFrame(
             self.ai_tab,
-            text="Ustawienia modelu",
+            text="Lokalny model",
             padding=14,
         )
-        settings_frame.pack(fill="x")
+        model_frame.pack(fill="x")
 
-        self._setting_row(
-            settings_frame,
-            0,
-            "Silnik AI",
-            ttk.Combobox(
-                settings_frame,
-                textvariable=self.provider_var,
-                values=["ollama", "openai", "demo"],
-                state="readonly",
-                width=24,
-            ),
+        ttk.Label(model_frame, text="Model", width=18).grid(
+            row=0, column=0, sticky="w", pady=5
         )
 
-        model_combo = ttk.Combobox(
-            settings_frame,
+        self.model_combo = ttk.Combobox(
+            model_frame,
             textvariable=self.model_var,
-            width=30,
+            width=32,
         )
-        self.model_combo = model_combo
-        self._setting_row(
-            settings_frame,
-            1,
-            "Model Ollama",
-            model_combo,
-            extra=ttk.Button(
-                settings_frame,
-                text="Odśwież modele",
-                command=self.refresh_models,
-            ),
-        )
+        self.model_combo.grid(row=0, column=1, sticky="w", pady=5)
 
-        profile = ttk.Combobox(
-            settings_frame,
-            textvariable=self.profile_var,
-            values=["Niski RAM", "Balans", "Jakość", "Własny"],
-            state="readonly",
-            width=24,
-        )
-        profile.bind("<<ComboboxSelected>>", self._profile_changed)
-        self._setting_row(
-            settings_frame,
-            2,
-            "Profil pamięci",
-            profile,
-        )
+        ttk.Button(
+            model_frame,
+            text="Odśwież modele",
+            command=self.refresh_models,
+        ).grid(row=0, column=2, padx=(8, 0), pady=5)
 
-        ctx_combo = ttk.Combobox(
-            settings_frame,
-            textvariable=self.ctx_var,
-            values=["2048", "4096", "8192", "16384", "32768"],
-            width=24,
-        )
-        self._setting_row(
-            settings_frame,
-            3,
-            "Kontekst (tokeny)",
-            ctx_combo,
-        )
-
-        predict_spin = ttk.Spinbox(
-            settings_frame,
-            from_=128,
-            to=8192,
-            increment=128,
-            textvariable=self.predict_var,
-            width=26,
-        )
-        self._setting_row(
-            settings_frame,
-            4,
-            "Maks. odpowiedź",
-            predict_spin,
-        )
-
-        threads_spin = ttk.Spinbox(
-            settings_frame,
-            from_=0,
-            to=64,
-            increment=1,
-            textvariable=self.threads_var,
-            width=26,
-        )
-        self._setting_row(
-            settings_frame,
-            5,
-            "Wątki CPU (0 = auto)",
-            threads_spin,
-        )
-
-        keep_combo = ttk.Combobox(
-            settings_frame,
-            textvariable=self.keep_alive_var,
-            values=["0s", "30s", "1m", "5m", "15m", "30m", "1h", "-1"],
-            width=24,
-        )
-        self._setting_row(
-            settings_frame,
-            6,
-            "Model zostaje w RAM",
-            keep_combo,
-        )
-
-        checks = ttk.Frame(settings_frame)
-        checks.grid(
-            row=7,
-            column=1,
-            columnspan=2,
-            sticky="w",
-            pady=8,
-        )
-
-        ttk.Checkbutton(
-            checks,
-            text="Głębsze rozumowanie modelu",
-            variable=self.think_var,
-        ).pack(anchor="w")
-
-        ttk.Checkbutton(
-            checks,
-            text="Zwalniaj model z RAM po każdym zapytaniu",
-            variable=self.unload_var,
-        ).pack(anchor="w", pady=(5, 0))
-
-        controls = ttk.Frame(settings_frame)
+        controls = ttk.Frame(model_frame)
         controls.grid(
-            row=8,
-            column=1,
-            columnspan=2,
+            row=1,
+            column=0,
+            columnspan=3,
             sticky="w",
-            pady=(10, 0),
+            pady=(8, 0),
         )
 
         ttk.Button(
             controls,
-            text="Zastosuj i zapisz",
-            command=self.save_ai_controls,
-        ).pack(side="left")
-
-        ttk.Button(
-            controls,
-            text="Połącz / uruchom Ollamę",
+            text="Połącz / uruchom AI",
             command=self.connect_ollama,
-        ).pack(side="left", padx=(8, 0))
+        ).pack(side="left")
 
         ttk.Button(
             controls,
@@ -468,6 +328,43 @@ class StudioApp(tk.Tk):
             text="Zwolnij RAM",
             command=self.unload_model_now,
         ).pack(side="left", padx=(8, 0))
+
+        limit_frame = ttk.LabelFrame(
+            self.ai_tab,
+            text="Limit pamięci AI",
+            padding=14,
+        )
+        limit_frame.pack(fill="x", pady=(14, 0))
+
+        ttk.Label(
+            limit_frame,
+            textvariable=self.ram_limit_text_var,
+            font=("Segoe UI", 12, "bold"),
+        ).pack(anchor="w")
+
+        self.ram_limit_scale = ttk.Scale(
+            limit_frame,
+            from_=20,
+            to=90,
+            orient="horizontal",
+            variable=self.ram_limit_var,
+            command=self._ram_slider_changed,
+        )
+        self.ram_limit_scale.pack(fill="x", pady=(10, 4))
+
+        marks = ttk.Frame(limit_frame)
+        marks.pack(fill="x")
+        ttk.Label(marks, text="20%").pack(side="left")
+        ttk.Label(marks, text="90%").pack(side="right")
+
+        ttk.Label(
+            limit_frame,
+            text=(
+                "Zmiana suwaka zapisuje się automatycznie. "
+                "Strażnik RAM sprawdza budżet przed startem modelu i podczas jego pracy."
+            ),
+            wraplength=1040,
+        ).pack(anchor="w", pady=(10, 0))
 
         monitor_frame = ttk.LabelFrame(
             self.ai_tab,
@@ -496,15 +393,7 @@ class StudioApp(tk.Tk):
             wraplength=1040,
         ).pack(anchor="w")
 
-        ttk.Label(
-            monitor_frame,
-            text=(
-                "Uwaga: nie da się ustawić twardego limitu RAM dla qwen3:30b "
-                "z poziomu pojedynczego zapytania. Jeśli sam model nie mieści się "
-                "w zadanym budżecie, trzeba wybrać mniejszy model."
-            ),
-            wraplength=1040,
-        ).pack(anchor="w", pady=(10, 0))
+        self._ram_slider_changed()
 
     def _build_trace_tab(self):
         ttk.Label(
