@@ -11,9 +11,10 @@ class VeoClient:
         self,
         api_key: str,
         *,
-        model: str = "veo-3.1-fast-generate-preview",
+        model: str = "veo-3.1-lite-generate-preview",
         aspect_ratio: str = "9:16",
         resolution: str = "720p",
+        duration_seconds: int = 4,
         poll_seconds: int = 12,
         timeout_seconds: int = 1800,
     ):
@@ -21,6 +22,7 @@ class VeoClient:
         self.model = model
         self.aspect_ratio = aspect_ratio
         self.resolution = resolution
+        self.duration_seconds = 4 if duration_seconds not in {4, 6, 8} else duration_seconds
         self.poll_seconds = poll_seconds
         self.timeout_seconds = timeout_seconds
 
@@ -55,7 +57,7 @@ class VeoClient:
             config=types.GenerateVideosConfig(
                 aspect_ratio=self.aspect_ratio,
                 resolution=self.resolution,
-                duration_seconds=8,
+                duration_seconds=self.duration_seconds,
                 number_of_videos=1,
             ),
         )
