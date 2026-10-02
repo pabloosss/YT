@@ -37,7 +37,7 @@ class ProjectStore:
         metadata = {
             "title": title,
             "created_at": datetime.now().isoformat(timespec="seconds"),
-            "version": "0.2.0",
+            "version": "0.4.0",
         }
         (path / "project.json").write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2),
