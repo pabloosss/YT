@@ -173,6 +173,7 @@ class ContentPipeline:
                 model=self.settings.veo_model,
                 aspect_ratio="9:16",
                 resolution=self.settings.veo_resolution,
+                duration_seconds=self.settings.veo_duration_seconds,
             )
             veo.healthcheck()
             clips = veo.generate_all(
@@ -241,6 +242,7 @@ class ContentPipeline:
             model=self.settings.veo_model,
             aspect_ratio=self.settings.veo_aspect_ratio,
             resolution=self.settings.veo_resolution,
+            duration_seconds=self.settings.veo_duration_seconds,
         ).healthcheck()
 
     def _run_project(self, topic, project, status, online):
@@ -300,6 +302,7 @@ class ContentPipeline:
                 model=self.settings.veo_model,
                 aspect_ratio=self.settings.veo_aspect_ratio,
                 resolution=self.settings.veo_resolution,
+                duration_seconds=self.settings.veo_duration_seconds,
             )
             video_clips = veo.generate_all(
                 prompts=prompts,
