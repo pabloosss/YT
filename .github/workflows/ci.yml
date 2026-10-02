@@ -28,4 +28,4 @@ jobs:
         run: python -m compileall -q app.py agents core tests
 
       - name: Smoke test
-        run: python tests/smoke_test.py
+        run: PYTHONPATH=. python tests/smoke_test.py

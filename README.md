@@ -2,7 +2,7 @@
 
 Lokalne środowisko wieloagentowe do produkcji filmów na YouTube.
 
-## v0.4
+## v0.5
 
 Aktualny pipeline:
 
@@ -210,3 +210,24 @@ Nigdy nie commituj:
 - wiele kanałów,
 - kolejka projektów,
 - pełny autopilot z etapem ręcznej akceptacji.
+
+
+## Sterowanie RAM-em i przebieg AI
+
+W zakładce **AI / RAM** można teraz ustawić:
+- model Ollama,
+- profil pamięci: Niski RAM / Balans / Jakość,
+- długość kontekstu `num_ctx`,
+- maksymalną długość odpowiedzi `num_predict`,
+- liczbę wątków CPU,
+- czas pozostawania modelu w RAM,
+- głębsze rozumowanie,
+- automatyczne zwalnianie modelu po każdym zapytaniu.
+
+Aplikacja pokazuje też rzeczywiste użycie RAM przez procesy Ollamy oraz dane z `/api/ps`.
+
+Zakładka **Przebieg AI** pokazuje na żywo generowany wynik, aktualny etap oraz metryki: tokeny wejściowe/wyjściowe, czas i prędkość generowania. Ukryty tok rozumowania modelu nie jest wyświetlany.
+
+### Ważne o RAM
+
+Nie istnieje twardy limit RAM ustawiany pojedynczym parametrem zapytania. Wagi modelu mają stały koszt pamięci. Największy wpływ na dodatkową pamięć mają długość kontekstu oraz to, jak długo model pozostaje załadowany. Jeśli wymagany budżet RAM jest mniejszy niż sam model, trzeba użyć mniejszego modelu.
