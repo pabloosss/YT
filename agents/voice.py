@@ -5,7 +5,7 @@ from pathlib import Path
 
 from agents.base import BaseAgent
 from core.elevenlabs_client import ElevenLabsClient
-from core.subtitles import clean_narration
+from core.subtitles import clean_narration, normalize_polish_tts
 
 
 class VoiceAgent(BaseAgent):
@@ -24,7 +24,8 @@ class VoiceAgent(BaseAgent):
     ) -> Path | None:
         audio_dir = project_path / "audio"
         audio_dir.mkdir(parents=True, exist_ok=True)
-        clean = clean_narration(script)
+        source_narration = clean_narration(script)
+        clean = normalize_polish_tts(source_narration)
         (audio_dir / "narration.txt").write_text(clean, encoding="utf-8")
 
         if not generate_audio or self.ai.demo_mode:
@@ -40,7 +41,11 @@ class VoiceAgent(BaseAgent):
             model_id=model,
         )
         (audio_dir / "voice_settings.json").write_text(
-            json.dumps({"model": model, "narration": clean}, ensure_ascii=False, indent=2),
+            json.dumps(
+                {"model": model, "source_narration": source_narration, "tts_text": clean},
+                ensure_ascii=False,
+                indent=2,
+            ),
             encoding="utf-8",
         )
         return target
