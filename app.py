@@ -26,12 +26,16 @@ from core.web_research import search_web, source_text
 from core.youtube_publisher import UploadRequest, YouTubePublisher
 
 AGENTS = ["Research", "Scenariusz", "Showrunner", "Lektor", "Grafika", "Montaż", "Kontrola", "YouTube Meta"]
+AI_MODES = {
+    "Dokładny — qwen3:14b": "qwen3:14b",
+    "Szybki — qwen3:8b": "qwen3:8b",
+}
 
 
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.9.4 · Shorts 30–60 s")
+        self.title("AI Content Studio v0.9.5 · Shorts 30–60 s")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -65,6 +69,11 @@ class StudioApp(tk.Tk):
         self.music_path = tk.StringVar(value=self.settings.music_path)
         self.provider = tk.StringVar(value=self.settings.ai_provider)
         self.model = tk.StringVar(value=self.settings.ollama_model)
+        selected_mode = next(
+            (label for label, model in AI_MODES.items() if model == self.settings.ollama_model),
+            next(iter(AI_MODES)),
+        )
+        self.ai_mode = tk.StringVar(value=selected_mode)
         self.ram = tk.DoubleVar(value=self.settings.ollama_ram_limit_percent)
         self.ram_label = tk.StringVar()
         self.connection = tk.StringVar(value="AI: sprawdzam rzeczywisty stan…")
@@ -187,9 +196,16 @@ class StudioApp(tk.Tk):
         ttk.Label(row, text="Maks. 4000 znaków. Zapis lokalny: projects/_memory/channel_profile.json").pack(side="left")
 
     def _settings_ui(self):
-        ttk.Label(self.settings_tab, text="Lokalne AI: Ollama · qwen3:8b",
+        ttk.Label(self.settings_tab, text="Lokalne AI: Ollama",
                   font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        ttk.Label(self.settings_tab, text="Qwen lokalnie wykonuje research, scenariusz, kontrolę i plan montażu.").pack(anchor="w")
+        ttk.Label(self.settings_tab, text="Dokładny 14B lepiej kontroluje historię i plan filmu; szybki 8B zużywa mniej pamięci.").pack(anchor="w")
+        mode_row = ttk.Frame(self.settings_tab)
+        mode_row.pack(fill="x", pady=(8, 2))
+        ttk.Label(mode_row, text="Tryb AI").pack(side="left", padx=(0, 8))
+        self.ai_mode_combo = ttk.Combobox(
+            mode_row, textvariable=self.ai_mode, state="readonly", values=tuple(AI_MODES), width=30
+        )
+        self.ai_mode_combo.pack(side="left")
         ttk.Label(self.settings_tab, textvariable=self.ram_label, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(8, 0))
         self.ram_scale = ttk.Scale(self.settings_tab, from_=20, to=90, variable=self.ram, command=self._ram_text)
         self.ram_scale.pack(fill="x", pady=(2, 6))
@@ -247,7 +263,7 @@ class StudioApp(tk.Tk):
         row.pack(fill="x", pady=8)
         self._button(row, "Zapisz ustawienia", self.save_settings)
         self._button(row, "Sprawdź Veo + głos + FFmpeg", self.test_media)
-        self._button(row, "Połącz / załaduj qwen3:8b", lambda: self.model_action("load"))
+        self._button(row, "Połącz / załaduj wybrany model", lambda: self.model_action("load"))
         row = ttk.Frame(self.settings_tab)
         row.pack(fill="x")
         self._button(row, "Pobierz model", lambda: self.model_action("pull"))
@@ -268,9 +284,10 @@ class StudioApp(tk.Tk):
             return False
         self.settings.ai_provider = "ollama"
         self.settings.demo_mode = False
-        self.settings.ollama_model = "qwen3:8b"
+        self.settings.ollama_model = AI_MODES.get(self.ai_mode.get(), "qwen3:14b")
         self.provider.set("ollama")
-        self.model.set("qwen3:8b")
+        self.model.set(self.settings.ollama_model)
+        self.ollama.model = self.settings.ollama_model
         self.settings.ollama_ram_limit_percent = max(20, min(90, round(self.ram.get())))
         self.settings.generate_media = self.media.get()
         self.settings.google_api_key = self.google_key.get().strip()
@@ -339,10 +356,11 @@ class StudioApp(tk.Tk):
             button.configure(state="disabled" if busy else "normal")
         for widget in (self.ram_scale, self.media_check, self.internet_check,
                        self.google_key_entry, self.elevenlabs_key_entry, self.voice_entry,
-                       self.music_entry, self.clips_spin):
+                       self.music_entry, self.clips_spin, self.ai_mode_combo):
             widget.configure(state="disabled" if busy else "normal")
         self.format_combo.configure(state="disabled" if busy else "readonly")
         self.clips_spin.configure(state="disabled" if busy else "readonly")
+        self.ai_mode_combo.configure(state="disabled" if busy else "readonly")
         self.stop_button.configure(state="disabled")
 
     def _job(self, label, work, done):
@@ -381,6 +399,9 @@ class StudioApp(tk.Tk):
         if additional > snapshot.available_gb:
             self.events.put(("progress", "Mało wolnego RAM. Ładuję model w ustawionym budżecie; zamknij zbędne programy, jeśli system zwalnia."))
         self.events.put(("connection", "AI: ŁADUJĘ MODEL…"))
+        for loaded_model in self.ollama.loaded_models():
+            if loaded_model != model and loaded_model in set(AI_MODES.values()):
+                self.ollama.unload_model(loaded_model)
         self.ollama.load_model(model=model, num_ctx=self.settings.ollama_num_ctx,
                                keep_alive=self.settings.ollama_keep_alive)
         confirmed = self.ollama.inspect(model)
@@ -482,7 +503,6 @@ class StudioApp(tk.Tk):
         if self.busy:
             return
         self.provider.set("ollama")
-        self.model.set("qwen3:8b")
         self.model_action("connect")
 
     def model_action(self, action):
