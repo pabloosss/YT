@@ -16,10 +16,23 @@ class TopicsAgent(BaseAgent):
             instructions="Zaplanuj research filmów po polsku. Zwróć wyłącznie tablicę JSON 2 krótkich zapytań do wyszukiwarki. Uwzględnij profil kanału.",
             prompt=f"Dziedzina: {subject}. Znajdź konkretne, ciekawe tematy odcinków. Nie dodawaj zmyślonych faktów do zapytań.",
         )
-        queries = loads_relaxed(raw)
-        if not isinstance(queries, list):
+        response = loads_relaxed(raw)
+        if isinstance(response, dict):
+            response = response.get("queries") or response.get("zapytania") or []
+        if not isinstance(response, list):
             raise ValueError("AI nie zwróciło listy zapytań. Spróbuj ponownie.")
-        queries = list(dict.fromkeys(q.strip()[:250] for q in queries if isinstance(q, str) and q.strip()))[:2]
+        parsed = []
+        for item in response:
+            if isinstance(item, str):
+                query = item
+            elif isinstance(item, dict):
+                query = item.get("query") or item.get("zapytanie") or item.get("text") or ""
+            else:
+                query = ""
+            query = str(query).strip()[:250]
+            if query:
+                parsed.append(query)
+        queries = list(dict.fromkeys(parsed))[:2]
         if not queries:
             raise ValueError("AI nie zaplanowało żadnego zapytania.")
         save("00_queries.json", queries)
