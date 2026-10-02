@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+import json
 import threading
 
 from agents.graphics import GraphicsAgent
@@ -68,6 +69,68 @@ class ContentPipeline:
             raise RuntimeError(f"{exc}\nZapisane wyniki: {project.path}") from exc
         finally:
             self.ai.channel_context = ""
+
+    def finish_existing(self, project_path: Path, status: StatusCallback | None = None) -> Path:
+        """Finish a failed project using saved Veo clips. This method never calls Veo."""
+        callback = status or (lambda _agent, _state: None)
+        project_path = Path(project_path)
+        script_path = project_path / "02_script.txt"
+        clips = sorted((project_path / "video_clips").glob("*.mp4"))
+        if not script_path.exists():
+            raise RuntimeError("W projekcie nie ma zapisanego scenariusza 02_script.txt.")
+        if not clips:
+            raise RuntimeError("W projekcie nie ma zapisanych klipów w video_clips. Nie ma czego odzyskać.")
+        if not self.editor.available():
+            raise RuntimeError("FFmpeg nie jest dostępny. Uruchom ponownie run_windows.bat.")
+
+        script = script_path.read_text(encoding="utf-8")
+        audio = project_path / "audio" / "narration.mp3"
+        subtitles = project_path / "subtitles" / "narration.srt"
+        if not audio.exists() or not subtitles.exists():
+            callback("Lektor", "TEST API")
+            ElevenLabsClient(self.settings.elevenlabs_api_key).healthcheck(
+                self.settings.elevenlabs_voice_id
+            )
+            callback("Lektor", "GENERUJĘ")
+            audio_file = self.voice_agent.run(
+                script=script,
+                project_path=project_path,
+                generate_audio=True,
+                api_key=self.settings.elevenlabs_api_key,
+                voice_id=self.settings.elevenlabs_voice_id,
+                model=self.settings.elevenlabs_model,
+            )
+            if audio_file is None:
+                raise RuntimeError("Nie udało się wygenerować lektora.")
+            audio = audio_file
+        callback("Lektor", "DONE")
+
+        callback("Montaż", "RUNNING")
+        music = Path(self.settings.music_path) if self.settings.music_path else None
+        output = self.editor.render_clips(
+            clips=clips,
+            audio=audio,
+            subtitles=subtitles if self.settings.burn_subtitles else None,
+            music=music,
+            aspect_ratio="9:16",
+            output=project_path / "exports" / "final.mp4",
+        )
+        callback("Montaż", "DONE")
+        (project_path / "recovery_result.json").write_text(
+            json.dumps(
+                {
+                    "reused_veo_clips": len(clips),
+                    "veo_called_again": False,
+                    "audio": str(audio),
+                    "subtitles": str(subtitles) if subtitles.exists() else None,
+                    "video": str(output),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return output
 
     def _media_preflight(self) -> None:
         if not self.settings.generate_media:
