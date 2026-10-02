@@ -11,7 +11,7 @@ except ImportError:
 load_dotenv()
 
 
-def _as_bool(value: str | None, default: bool = false) -> bool:
+def _as_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
