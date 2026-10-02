@@ -18,6 +18,7 @@ from core.editor import FFmpegEditor
 from core.elevenlabs_client import ElevenLabsClient
 from core.openai_gateway import OpenAIGateway
 from core.project_store import ProjectStore
+from core.subtitles import text_to_srt
 from core.veo_client import VeoClient
 from core.web_research import search_web
 
@@ -81,9 +82,11 @@ class ContentPipeline:
         callback = status or (lambda _agent, _state: None)
         project_path = Path(project_path)
         script_path = project_path / "02_script.txt"
-        clips = sorted((project_path / "video_clips").glob("*.mp4"))
+        clips = sorted(path for path in (project_path / "video_clips").glob("*.mp4")
+                       if path.is_file() and path.stat().st_size >= 1024)
         if not clips:
-            clips = sorted((project_path / "video").glob("*.mp4"))
+            clips = sorted(path for path in (project_path / "video").glob("*.mp4")
+                           if path.is_file() and path.stat().st_size >= 1024)
         if not script_path.exists():
             raise RuntimeError("W projekcie nie ma zapisanego scenariusza 02_script.txt.")
         if not clips and not allow_generate_veo:
@@ -94,7 +97,8 @@ class ContentPipeline:
         script = script_path.read_text(encoding="utf-8")
         audio = project_path / "audio" / "narration.mp3"
         subtitles = project_path / "subtitles" / "narration.srt"
-        if not audio.exists() or not subtitles.exists():
+        audio_ready = audio.exists() and audio.stat().st_size >= 1024
+        if not audio_ready:
             callback("Lektor", "TEST API")
             ElevenLabsClient(self.settings.elevenlabs_api_key).healthcheck(
                 self.settings.elevenlabs_voice_id
@@ -111,6 +115,9 @@ class ContentPipeline:
             if audio_file is None:
                 raise RuntimeError("Nie udało się wygenerować lektora.")
             audio = audio_file
+        elif not subtitles.exists() or subtitles.stat().st_size == 0:
+            callback("Lektor", "ODTWARZAM NAPISY LOKALNIE")
+            text_to_srt(script, subtitles, duration_seconds=30)
         callback("Lektor", "DONE")
 
         generated_veo = False
