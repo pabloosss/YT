@@ -2,7 +2,7 @@
 
 Lokalne środowisko wieloagentowe do produkcji filmów na YouTube.
 
-## v0.3
+## v0.4
 
 Aktualny pipeline:
 
@@ -44,7 +44,9 @@ YouTube Publisher
 - OAuth YouTube,
 - upload filmu przez YouTube Data API,
 - upload z aplikacji jest obecnie wymuszony jako **PRIVATE**,
-- tryb DEMO bez używania płatnych API.
+- tryb DEMO bez używania płatnych API,
+- lokalny backend Ollama (`qwen3:30b`) bez klucza API,
+- przycisk `Sprawdź AI` do testowania połączenia z lokalnym modelem.
 
 ## Uruchomienie na Windows
 
@@ -55,6 +57,52 @@ run_windows.bat
 ```
 
 Przy pierwszym starcie program sam tworzy `.venv` i instaluje zależności.
+
+## Szybka konfiguracja lokalnego Qwen3 przez Ollamę
+
+Jeśli masz już pobrane:
+
+```powershell
+ollama run qwen3:30b
+```
+
+to po pobraniu najnowszego kodu uruchom:
+
+```text
+setup_ollama.bat
+```
+
+Skrypt utworzy lokalny `.env`:
+
+```env
+AI_PROVIDER=ollama
+AI_STUDIO_DEMO=false
+OLLAMA_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen3:30b
+OLLAMA_TIMEOUT=900
+OLLAMA_KEEP_ALIVE=15m
+GENERATE_MEDIA=false
+```
+
+Potem uruchom `run_windows.bat`. Na górze aplikacji powinno pojawić się:
+
+```text
+Tryb: OLLAMA · qwen3:30b
+```
+
+Przycisk **Sprawdź AI** sprawdza, czy lokalny serwer Ollamy odpowiada i czy model jest zainstalowany.
+
+Tekstowi agenci działają wtedy lokalnie:
+
+```text
+Research → qwen3:30b
+Scenariusz → qwen3:30b
+Showrunner → qwen3:30b
+Graphics prompts → qwen3:30b
+YouTube Meta → qwen3:30b
+```
+
+`GENERATE_MEDIA=false` oznacza, że na tym etapie Qwen generuje tekst i prompty, ale nie obrazy ani audio.
 
 ## Konfiguracja
 
