@@ -116,7 +116,7 @@ class StudioApp(tk.Tk):
         row = ttk.Frame(self.studio)
         row.pack(fill="x")
         self._button(row, "AI: znajdź tematy", self.find_topics)
-        self._button(row, "Przygotuj projekt", self.start_pipeline)
+        self._button(row, "Generuj projekt / film", self.start_pipeline)
         self.stop_button = ttk.Button(row, text="Zatrzymaj po etapie", state="disabled", command=self._stop)
         self.stop_button.pack(side="left", padx=8)
         self.internet_check = ttk.Checkbutton(row, text="Research w internecie", variable=self.online)
@@ -269,7 +269,11 @@ class StudioApp(tk.Tk):
         self.settings.elevenlabs_api_key = self.elevenlabs_key.get().strip()
         self.settings.elevenlabs_voice_id = self.elevenlabs_voice.get().strip()
         self.settings.veo_aspect_ratio = self.video_format.get()
-        self.settings.veo_max_clips = max(1, min(12, int(self.max_clips.get())))
+        try:
+            self.settings.veo_max_clips = max(1, min(12, int(self.max_clips.get())))
+        except (ValueError, tk.TclError):
+            messagebox.showerror("Ustawienia", "Liczba klipów Veo musi być liczbą od 1 do 12.")
+            return False
         self.settings.music_path = self.music_path.get().strip()
         try:
             save_ai_settings(self.settings)
