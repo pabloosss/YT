@@ -153,6 +153,19 @@ class OllamaManager:
             timeout=900,
         )
 
+    def unload_model(self, model: str | None = None) -> None:
+        target = model or self.model
+        self._post_json(
+            "/api/generate",
+            {
+                "model": target,
+                "prompt": "",
+                "stream": False,
+                "keep_alive": 0,
+            },
+            timeout=30,
+        )
+
     def pull_model(self, model: str | None = None) -> tuple[bool, str]:
         target = model or self.model
         executable = self.find_executable()
