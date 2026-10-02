@@ -2,7 +2,7 @@
 
 Lokalne środowisko wieloagentowe do produkcji filmów na YouTube.
 
-## v0.6
+## v0.7
 
 Aktualny pipeline:
 
@@ -249,3 +249,26 @@ Górny panel pokazuje rzeczywisty stan lokalnego AI:
 - **AI: OLLAMA NIEZNALEZIONA** — aplikacja nie znalazła instalacji.
 
 Przycisk **Połącz / uruchom AI** uruchamia serwer i ładuje wybrany model. Status jest odświeżany automatycznie co kilka sekund.
+
+
+## Limit RAM v0.7
+
+Panel AI / RAM został uproszczony do jednego suwaka **Maks. RAM dla AI**.
+
+Suwak:
+- ustawia budżet jako procent całej pamięci RAM komputera,
+- zapisuje ustawienie automatycznie,
+- sprawdza, czy wybrany model mieści się w budżecie przed jego uruchomieniem,
+- monitoruje rzeczywiste użycie pamięci przez procesy Ollamy,
+- zwalnia model z pamięci po przekroczeniu budżetu.
+
+Przykład: przy 64 GB RAM i limicie 50% aplikacja przyjmuje budżet około 32 GB dla lokalnego AI.
+
+Stan połączenia na starcie jest teraz sprawdzany **przed** automatycznym uruchomieniem Ollamy. Jeśli serwer był wyłączony, aplikacja najpierw pokaże ten stan, a dopiero potem przejdzie do uruchamiania lokalnego AI.
+
+Nagłówek pokazuje tylko wybrany silnik. Faktyczny stan połączenia pokazuje duży pasek:
+- AI: OLLAMA WYŁĄCZONA,
+- AI: URUCHAMIAM OLLAMĘ,
+- AI: POŁĄCZONO · MODEL GOTOWY,
+- AI: POŁĄCZONO · MODEL ZAŁADOWANY,
+- AI: LIMIT RAM ZA NISKI / PRZEKROCZONY.
