@@ -216,8 +216,8 @@ class StudioApp(tk.Tk):
             options, textvariable=self.video_format, state="readonly", values=("9:16",), width=10
         )
         self.format_combo.grid(row=1, column=0, sticky="w", padx=(0, 18))
-        ttk.Label(options, text="Klipy Veo (4 × około 8 s)").grid(row=0, column=1, sticky="w")
-        self.clips_spin = ttk.Spinbox(options, from_=4, to=4, textvariable=self.max_clips, width=8, state="readonly")
+        ttk.Label(options, text="Tryb oszczędny: 2 klipy Veo × około 8 s").grid(row=0, column=1, sticky="w")
+        self.clips_spin = ttk.Spinbox(options, from_=2, to=2, textvariable=self.max_clips, width=8, state="readonly")
         self.clips_spin.grid(row=1, column=1, sticky="w", padx=(0, 18))
         ttk.Label(options, text="Voice ID ElevenLabs (opcjonalnie)").grid(row=0, column=2, sticky="w")
         self.voice_entry = ttk.Entry(options, textvariable=self.elevenlabs_voice, width=34)
@@ -272,8 +272,8 @@ class StudioApp(tk.Tk):
         self.settings.elevenlabs_voice_id = self.elevenlabs_voice.get().strip()
         self.settings.veo_aspect_ratio = "9:16"
         self.video_format.set("9:16")
-        self.settings.veo_max_clips = 4
-        self.max_clips.set(4)
+        self.settings.veo_max_clips = 2
+        self.max_clips.set(2)
         self.settings.music_path = self.music_path.get().strip()
         try:
             save_ai_settings(self.settings)
@@ -400,6 +400,12 @@ class StudioApp(tk.Tk):
                     "Pełny film",
                     "Brakuje: " + ", ".join(missing) + ". Uzupełnij Ustawienia albo wyłącz pełny film.",
                 )
+                return
+            if not messagebox.askyesno(
+                "Koszt Veo",
+                "Tryb oszczędny wygeneruje maksymalnie 2 płatne klipy Veo. "
+                "Montaż wykorzysta je ponownie do złożenia 30 sekund. Kontynuować?",
+            ):
                 return
         self.cancel.clear()
         online = self.online.get()
@@ -659,7 +665,7 @@ class StudioApp(tk.Tk):
         else:
             question = (
                 "Projekt ma scenariusz, ale nie ma klipów. Po potwierdzeniu program odtworzy plan i prompty, "
-                "a następnie wygeneruje 4 płatne klipy Veo. Kontynuować?"
+                "a następnie wygeneruje maksymalnie 2 płatne klipy Veo. Kontynuować?"
             )
         if not messagebox.askyesno("Dokończ projekt", question):
             return
