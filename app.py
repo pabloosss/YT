@@ -31,7 +31,7 @@ AGENTS = ["Research", "Scenariusz", "Showrunner", "Lektor", "Grafika", "Montaż"
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.9.1 · Shorts 30 s")
+        self.title("AI Content Studio v0.9.2 · Shorts 30 s")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -117,6 +117,7 @@ class StudioApp(tk.Tk):
         row.pack(fill="x")
         self._button(row, "AI: znajdź tematy", self.find_topics)
         self._button(row, "Generuj projekt / film", self.start_pipeline)
+        self._button(row, "Wznów ostatni projekt", self.finish_last_project)
         self.stop_button = ttk.Button(row, text="Zatrzymaj po etapie", state="disabled", command=self._stop)
         self.stop_button.pack(side="left", padx=8)
         self.internet_check = ttk.Checkbutton(row, text="Research w internecie", variable=self.online)
@@ -640,8 +641,12 @@ class StudioApp(tk.Tk):
             return
         project = self.last_project
         script = project / "02_script.txt"
-        clips = list((project / "video_clips").glob("*.mp4")) + list((project / "video").glob("*.mp4"))
-        audio_ready = (project / "audio" / "narration.mp3").exists() and (project / "subtitles" / "narration.srt").exists()
+        clips = [
+            path for path in list((project / "video_clips").glob("*.mp4")) + list((project / "video").glob("*.mp4"))
+            if path.is_file() and path.stat().st_size >= 1024
+        ]
+        audio = project / "audio" / "narration.mp3"
+        audio_ready = audio.exists() and audio.stat().st_size >= 1024
         if not script.exists():
             messagebox.showwarning("Dokańczanie", "Ten projekt nie ma zapisanego scenariusza 02_script.txt.")
             return
