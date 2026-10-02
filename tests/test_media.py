@@ -14,6 +14,35 @@ from core.veo_client import VeoClient
 
 
 class SubtitleTests(unittest.TestCase):
+    @staticmethod
+    def _mock_finish_services(pipeline: ContentPipeline) -> None:
+        pipeline.script_agent.prepare_for_voice = lambda **_kwargs: (
+            "To jest kompletna opowieść przygotowana do testu. Ma wyraźny początek, rozwinięcie oraz spokojny finał."
+        )
+        pipeline._audio_matches = lambda *_args: True
+        pipeline.editor.media_duration = lambda _path: 28.0
+        pipeline.editor.inspect_short = lambda _path: {
+            "width": 720,
+            "height": 1280,
+            "duration_seconds": 30.0,
+            "vertical": True,
+            "short_eligible": True,
+        }
+
+        def create_thumbnail(_video, output):
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(b"t" * 2048)
+            return output
+
+        pipeline.editor.create_thumbnail = create_thumbnail
+        pipeline._final_ai_review = lambda **_kwargs: {
+            "approved": True,
+            "summary": "Historia jest kompletna.",
+            "strengths": ["Pełne zakończenie"],
+            "risks": [],
+            "video_info": {"short_eligible": True},
+        }
+
     def test_short_narration_caps_paid_tts_input(self):
         source = " ".join(f"słowo{index}" for index in range(100))
         result = short_narration(source)
@@ -88,6 +117,7 @@ class SubtitleTests(unittest.TestCase):
 
             pipeline.editor.available = lambda: True
             pipeline.editor.render_clips = render
+            self._mock_finish_services(pipeline)
             with patch("core.pipeline.VeoClient", side_effect=AssertionError("Veo must not be called")):
                 output = pipeline.finish_existing(project)
 
@@ -127,6 +157,7 @@ class SubtitleTests(unittest.TestCase):
 
             pipeline.editor.available = lambda: True
             pipeline.editor.render_clips = render
+            self._mock_finish_services(pipeline)
             with patch.object(VeoClient, "healthcheck", return_value="ok"), \
                  patch.object(VeoClient, "generate_all", side_effect=generate_all):
                 output = pipeline.finish_existing(project, allow_generate_veo=True)
@@ -158,6 +189,7 @@ class SubtitleTests(unittest.TestCase):
                 return output
 
             pipeline.editor.render_clips = render
+            self._mock_finish_services(pipeline)
             with patch.object(pipeline.script_agent, "run", return_value="Odtworzony scenariusz."), \
                  patch.object(pipeline.metadata_agent, "run", return_value={"title": "Odtworzony", "description": "#shorts", "tags": []}):
                 output = pipeline.finish_existing(project)
