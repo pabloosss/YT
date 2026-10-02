@@ -1,5 +1,6 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import json
 import unittest
 from unittest.mock import patch
 
@@ -10,11 +11,34 @@ from core.project_store import ProjectStore
 
 from core.elevenlabs_client import ElevenLabsClient
 from core.editor import FFmpegEditor
-from core.subtitles import alignment_to_srt, clean_narration, short_narration, text_to_srt
+from core.subtitles import alignment_to_srt, clean_narration, normalize_polish_tts, short_narration, text_to_srt
 from core.veo_client import VeoClient
 
 
 class SubtitleTests(unittest.TestCase):
+    def test_existing_voice_is_reused_only_for_same_narration_and_model(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = root / "voice_project"
+            audio_dir = project / "audio"
+            audio_dir.mkdir(parents=True)
+            (audio_dir / "narration.mp3").write_bytes(b"a" * 2048)
+            (audio_dir / "voice_settings.json").write_text(
+                json.dumps({
+                    "model": "eleven_turbo_v2_5",
+                    "source_narration": "Ten sam tekst.",
+                    "tts_text": "Ten sam tekst.",
+                }),
+                encoding="utf-8",
+            )
+            settings = load_settings()
+            settings.projects_dir = root
+            settings.elevenlabs_model = "eleven_turbo_v2_5"
+            pipeline = ContentPipeline(ProjectStore(root), OpenAIGateway(settings), settings)
+
+            self.assertTrue(pipeline._audio_matches(project, "Ten sam tekst."))
+            self.assertFalse(pipeline._audio_matches(project, "Zmieniony tekst."))
+
     def test_vertical_subtitles_are_small_and_bottom_aligned(self):
         profile = FFmpegEditor.subtitle_profile()
         self.assertLessEqual(profile["font_size"], 20)
@@ -30,6 +54,9 @@ class SubtitleTests(unittest.TestCase):
             "To jest kompletna opowieść przygotowana do testu. Ma wyraźny początek, rozwinięcie oraz spokojny finał."
         )
         pipeline._audio_matches = lambda *_args: True
+        pipeline._supervise_narration = lambda **kwargs: (
+            kwargs["narration"], {"approved": True, "cycles": 1, "issues": [], "summary": "OK"}
+        )
         pipeline.editor.media_duration = lambda _path: 28.0
         pipeline.editor.inspect_short = lambda _path: {
             "width": 720,
@@ -61,6 +88,50 @@ class SubtitleTests(unittest.TestCase):
                 "scope": "test",
             },
         )
+        pipeline._prefetch_hybrid_images = lambda **_kwargs: {}
+        pipeline._build_unique_shot_folder = lambda **kwargs: kwargs["video_clips"]
+
+    def test_polish_tts_spells_dates_and_years(self):
+        result = normalize_polish_tts("Film z 2.10.2026 opisuje odkrycie z 1799 roku.")
+        self.assertIn("drugi października dwa tysiące dwadzieścia sześć", result)
+        self.assertIn("tysiąc siedemset dziewięćdziesiąt dziewięć", result)
+        self.assertNotIn("1799", result)
+
+    def test_hybrid_builder_creates_readable_unique_shot_folder(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = root / "project"
+            project.mkdir()
+            video = project / "shot_001.mp4"
+            image = project / "commons_002.jpg"
+            video.write_bytes(b"v" * 2048)
+            image.write_bytes(b"i" * 2048)
+            settings = load_settings()
+            settings.projects_dir = root
+            pipeline = ContentPipeline(ProjectStore(root), OpenAIGateway(settings), settings)
+
+            def prepare_shot(*, output, **_kwargs):
+                output.write_bytes(b"s" * 2048)
+                return output
+
+            pipeline.editor.prepare_shot = prepare_shot
+            outputs = pipeline._build_unique_shot_folder(
+                project_path=project,
+                prompts=[
+                    {"shot": 1, "prompt": "cat temple", "description_pl": "Kot w świątyni", "tags": ["kot"]},
+                    {"shot": 2, "prompt": "Bastet statue", "description_pl": "Posąg bogini Bastet", "tags": ["Bastet"]},
+                ],
+                video_clips=[video],
+                images={2: (image, {"author": "Autor", "license": "CC BY", "source_url": "https://example.org"})},
+                duration_seconds=30,
+            )
+
+            self.assertEqual(len(outputs), 2)
+            self.assertIn("kot_w_swiatyni", outputs[0].name)
+            self.assertTrue((project / "shots" / "OPIS_UJEC.txt").exists())
+            manifest = json.loads((project / "05_shot_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual([item["source_type"] for item in manifest], ["veo", "wikimedia_commons"])
+            self.assertTrue((root / "_media_library" / "manifest.json").exists())
 
     def test_short_narration_caps_paid_tts_input(self):
         source = " ".join(f"słowo{index}" for index in range(100))
@@ -138,6 +209,8 @@ class SubtitleTests(unittest.TestCase):
             (project / "subtitles").mkdir()
             (project / "02_script.txt").write_text("Gotowy tekst.", encoding="utf-8")
             (project / "07_youtube.json").write_text('{"title":"Test"}', encoding="utf-8")
+            (project / "03_shots.json").write_text('[{"shot":1,"visual":"Test"}]', encoding="utf-8")
+            (project / "04_video_prompts.json").write_text('[{"shot":1,"prompt":"test"}]', encoding="utf-8")
             (project / "video_clips" / "shot_001.mp4").write_bytes(b"v" * 2048)
             (project / "audio" / "narration.mp3").write_bytes(b"a" * 2048)
             (project / "subtitles" / "narration.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nTest\n", encoding="utf-8")
@@ -210,6 +283,8 @@ class SubtitleTests(unittest.TestCase):
             (project / "audio").mkdir()
             (project / "subtitles").mkdir()
             (project / "01_research.md").write_text("Sprawdzony research.", encoding="utf-8")
+            (project / "03_shots.json").write_text('[{"shot":1,"visual":"Test"}]', encoding="utf-8")
+            (project / "04_video_prompts.json").write_text('[{"shot":1,"prompt":"test"}]', encoding="utf-8")
             (project / "video_clips" / "shot_001.mp4").write_bytes(b"v" * 2048)
             (project / "audio" / "narration.mp3").write_bytes(b"a" * 2048)
 
