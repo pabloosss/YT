@@ -1,6 +1,6 @@
-# AI Content Studio v0.9
+# AI Content Studio v0.9.1 — TikTok / YouTube Shorts
 
-Windowsowa aplikacja, która prowadzi projekt od tematu do gotowego filmu. Tekst i decyzje agentów wykonuje lokalny qwen3:8b w Ollamie. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
+Windowsowa aplikacja, która prowadzi projekt od tematu do gotowego pionowego filmu 9:16 o długości 30 sekund. Tekst i decyzje agentów wykonuje lokalny qwen3:8b w Ollamie. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
 
 ## Uruchomienie
 
@@ -30,10 +30,10 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 1. Research internetowy zbiera wyniki i adresy źródeł.
 2. Lokalny Qwen przygotowuje research, scenariusz i plan ujęć.
 3. Qwen tworzy po angielsku prompty filmowe dla Veo.
-4. Veo generuje osobny klip dla każdego ujęcia, do ustawionego limitu.
+4. Veo generuje 4 pionowe klipy po około 8 sekund.
 5. ElevenLabs tworzy jednego spójnego lektora i znaczniki czasu.
 6. Aplikacja buduje plik SRT.
-7. FFmpeg łączy i w razie potrzeby zapętla klipy do długości narracji, dodaje lektora, cichą muzykę oraz wtopione napisy.
+7. FFmpeg łączy klipy, dodaje lektora, cichą muzykę oraz duże wtopione napisy i kończy film dokładnie w 30. sekundzie.
 8. Gotowy film trafia do projects/<projekt>/exports/final.mp4.
 9. Metadata Agent przygotowuje tytuł, opis i tagi. Film można wysłać na YouTube wyłącznie jako PRIVATE.
 
@@ -54,9 +54,9 @@ Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pak
 
 ## Koszty i bezpieczeństwo
 
-Ollama, planowanie, napisy i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Limit klipów zabezpiecza przed przypadkowym uruchomieniem zbyt wielu generacji, ale aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
+Ollama, planowanie, napisy i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Stała liczba 4 klipów ogranicza przypadkowe uruchomienie zbyt wielu generacji, ale aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
 
-Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu. Pierwszy prawdziwy test warto wykonać z limitem jednego klipu.
+Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu. Pierwszy pełny test tworzy 4 klipy Veo, dlatego przed uruchomieniem sprawdź dostęp i koszt na swoim koncie.
 
 ## Pamięć kanału
 
