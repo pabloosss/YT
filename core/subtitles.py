@@ -4,6 +4,66 @@ import re
 from pathlib import Path
 
 
+_ONES = ["zero", "jeden", "dwa", "trzy", "cztery", "pięć", "sześć", "siedem", "osiem", "dziewięć"]
+_TEENS = ["dziesięć", "jedenaście", "dwanaście", "trzynaście", "czternaście", "piętnaście", "szesnaście", "siedemnaście", "osiemnaście", "dziewiętnaście"]
+_TENS = ["", "", "dwadzieścia", "trzydzieści", "czterdzieści", "pięćdziesiąt", "sześćdziesiąt", "siedemdziesiąt", "osiemdziesiąt", "dziewięćdziesiąt"]
+_HUNDREDS = ["", "sto", "dwieście", "trzysta", "czterysta", "pięćset", "sześćset", "siedemset", "osiemset", "dziewięćset"]
+_MONTHS = {
+    1: "stycznia", 2: "lutego", 3: "marca", 4: "kwietnia", 5: "maja", 6: "czerwca",
+    7: "lipca", 8: "sierpnia", 9: "września", 10: "października", 11: "listopada", 12: "grudnia",
+}
+_DAYS = {
+    1: "pierwszy", 2: "drugi", 3: "trzeci", 4: "czwarty", 5: "piąty", 6: "szósty", 7: "siódmy",
+    8: "ósmy", 9: "dziewiąty", 10: "dziesiąty", 11: "jedenasty", 12: "dwunasty", 13: "trzynasty",
+    14: "czternasty", 15: "piętnasty", 16: "szesnasty", 17: "siedemnasty", 18: "osiemnasty",
+    19: "dziewiętnasty", 20: "dwudziesty", 21: "dwudziesty pierwszy", 22: "dwudziesty drugi",
+    23: "dwudziesty trzeci", 24: "dwudziesty czwarty", 25: "dwudziesty piąty", 26: "dwudziesty szósty",
+    27: "dwudziesty siódmy", 28: "dwudziesty ósmy", 29: "dwudziesty dziewiąty", 30: "trzydziesty",
+    31: "trzydziesty pierwszy",
+}
+
+
+def _number_pl(value: int) -> str:
+    if value < 0 or value > 9999:
+        return str(value)
+    if value < 10:
+        return _ONES[value]
+    parts: list[str] = []
+    thousands, rest = divmod(value, 1000)
+    if thousands:
+        if thousands == 1:
+            parts.append("tysiąc")
+        elif thousands in {2, 3, 4}:
+            parts.extend([_ONES[thousands], "tysiące"])
+        else:
+            parts.extend([_ONES[thousands], "tysięcy"])
+    hundreds, rest = divmod(rest, 100)
+    if hundreds:
+        parts.append(_HUNDREDS[hundreds])
+    if 10 <= rest <= 19:
+        parts.append(_TEENS[rest - 10])
+    else:
+        tens, ones = divmod(rest, 10)
+        if tens:
+            parts.append(_TENS[tens])
+        if ones:
+            parts.append(_ONES[ones])
+    return " ".join(parts) or "zero"
+
+
+def normalize_polish_tts(text: str) -> str:
+    """Make numeric dates and years unambiguous for a Polish multilingual voice."""
+    def date_replacement(match: re.Match) -> str:
+        day, month, year = (int(match.group(index)) for index in range(1, 4))
+        if day not in _DAYS or month not in _MONTHS:
+            return match.group(0)
+        return f"{_DAYS[day]} {_MONTHS[month]} {_number_pl(year)}"
+
+    value = re.sub(r"\b(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})\b", date_replacement, text)
+    value = re.sub(r"\b(1\d{3}|20\d{2})\b", lambda match: _number_pl(int(match.group(1))), value)
+    return value
+
+
 def clean_narration(text: str) -> str:
     """Turn an agent's Markdown answer into text suitable for a narrator."""
     value = re.sub(r"<think>.*?</think>", " ", text, flags=re.I | re.S)
