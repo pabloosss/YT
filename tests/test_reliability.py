@@ -65,9 +65,9 @@ class ReliabilityTests(unittest.TestCase):
         ai = MagicMock(demo_mode=False)
         ai.ask.return_value = '{"shots":[{"shot":1,"duration_sec":4,"visual":"Kot","camera":"Zoom","lightyng":"Ciemne","purpose":"Hook"}]}'
         shots = ShowrunnerAgent(ai).run(topic="koty", script="tekst")
-        self.assertEqual(len(shots), 4)
+        self.assertEqual(len(shots), 8)
         self.assertEqual(shots[0]["lighting"], "Ciemne")
-        self.assertEqual([shot["duration_sec"] for shot in shots], [8, 8, 8, 6])
+        self.assertEqual([shot["duration_sec"] for shot in shots], [4, 4, 4, 4, 4, 4, 3, 3])
         self.assertEqual(sum(shot["duration_sec"] for shot in shots), 30)
 
     def test_think_tags_never_leak_with_any_chunk_boundary(self):
