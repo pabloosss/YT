@@ -30,7 +30,7 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 1. Research internetowy zbiera wyniki i adresy źródeł.
 2. Lokalny Qwen przygotowuje research, scenariusz i plan ujęć.
 3. Qwen tworzy po angielsku prompty filmowe dla Veo.
-4. Veo generuje 4 pionowe klipy po około 8 sekund.
+4. Veo generuje maksymalnie 2 pionowe klipy po około 8 sekund; montaż wykorzystuje je ponownie do pełnych 30 sekund.
 5. ElevenLabs tworzy jednego spójnego lektora i znaczniki czasu.
 6. Aplikacja buduje plik SRT.
 7. FFmpeg łączy klipy, dodaje lektora, cichą muzykę oraz duże wtopione napisy i kończy film dokładnie w 30. sekundzie.
@@ -54,9 +54,9 @@ Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pak
 
 ## Koszty i bezpieczeństwo
 
-Ollama, planowanie, napisy i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Stała liczba 4 klipów ogranicza przypadkowe uruchomienie zbyt wielu generacji, ale aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
+Ollama, planowanie, napisy i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Tryb oszczędny ogranicza Veo do 2 klipów, pyta o zgodę przed płatną generacją i przy ponowieniu pomija klipy już zapisane na dysku. Aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
 
-Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu. Pierwszy pełny test tworzy 4 klipy Veo, dlatego przed uruchomieniem sprawdź dostęp i koszt na swoim koncie.
+Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu i nie są generowane ponownie podczas ponowienia. Pierwszy pełny test tworzy maksymalnie 2 klipy Veo, dlatego przed uruchomieniem sprawdź dostęp i koszt na swoim koncie.
 
 ## Pamięć kanału
 
