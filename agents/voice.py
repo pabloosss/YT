@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from agents.base import BaseAgent
+from core.elevenlabs_client import ElevenLabsClient
+from core.subtitles import clean_narration
 
 
 class VoiceAgent(BaseAgent):
@@ -14,22 +16,26 @@ class VoiceAgent(BaseAgent):
         script: str,
         project_path: Path,
         generate_audio: bool,
-        model: str,
-        voice: str,
-        instructions: str,
+        api_key: str = "",
+        voice_id: str = "",
+        model: str = "eleven_multilingual_v2",
+        **_legacy,
     ) -> Path | None:
         audio_dir = project_path / "audio"
         audio_dir.mkdir(parents=True, exist_ok=True)
-        (audio_dir / "narration.txt").write_text(script, encoding="utf-8")
+        clean = clean_narration(script)
+        (audio_dir / "narration.txt").write_text(clean, encoding="utf-8")
 
         if not generate_audio or self.ai.demo_mode:
             return None
 
         target = audio_dir / "narration.mp3"
-        return self.ai.text_to_speech(
-            text=script,
-            output_path=target,
-            model=model,
-            voice=voice,
-            instructions=instructions,
+        subtitles = project_path / "subtitles" / "narration.srt"
+        ElevenLabsClient(api_key).synthesize(
+            text=clean,
+            output_audio=target,
+            output_srt=subtitles,
+            voice_id=voice_id,
+            model_id=model,
         )
+        return target
