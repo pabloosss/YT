@@ -574,6 +574,16 @@ class StudioApp(tk.Tk):
             messagebox.showwarning("Brak tematu", "Wpisz temat filmu.")
             return
 
+        if self.settings.ai_provider == "ollama" or self.provider_var.get() == "ollama":
+            state = self.ollama.inspect(self.model_var.get().strip() or self.settings.ollama_model)
+            if not state.connected:
+                self.connect_ollama()
+                messagebox.showinfo(
+                    "Łączenie AI",
+                    "Najpierw łączę lokalną Ollamę. Gdy status zmieni się na POŁĄCZONO, uruchom pipeline ponownie.",
+                )
+                return
+
         self.run_button.configure(state="disabled")
         self.upload_button.configure(state="disabled")
 
@@ -606,6 +616,170 @@ class StudioApp(tk.Tk):
     # ------------------------------------------------------------------
     # AI settings / memory
     # ------------------------------------------------------------------
+
+    def auto_connect_ollama(self):
+        self._set_connection_visual(
+            "checking",
+            "AI: ŁĄCZENIE…",
+            "Wykrywam Ollamę i sprawdzam lokalny model.",
+        )
+        threading.Thread(
+            target=self._connect_ollama_worker,
+            kwargs={"load_model": False, "silent": True},
+            daemon=True,
+        ).start()
+
+    def connect_ollama(self):
+        self.connect_ai_button.configure(state="disabled")
+        self._set_connection_visual(
+            "checking",
+            "AI: ŁĄCZENIE…",
+            "Uruchamiam Ollamę i sprawdzam qwen3:30b.",
+        )
+        threading.Thread(
+            target=self._connect_ollama_worker,
+            kwargs={"load_model": True, "silent": False},
+            daemon=True,
+        ).start()
+
+    def _connect_ollama_worker(self, *, load_model: bool, silent: bool):
+        try:
+            model = self.model_var.get().strip() or self.settings.ollama_model
+            self.ollama.model = model
+
+            started, message = self.ollama.start_server()
+            if not started:
+                self.events.put(
+                    ("ollama_connection", {
+                        "state": self.ollama.inspect(model),
+                        "silent": silent,
+                        "error": message,
+                    })
+                )
+                return
+
+            state = self.ollama.inspect(model)
+            if not state.model_installed:
+                self.events.put(
+                    ("ollama_connection", {
+                        "state": state,
+                        "silent": silent,
+                        "error": None,
+                    })
+                )
+                return
+
+            self.settings.ai_provider = "ollama"
+            self.settings.demo_mode = False
+            self.settings.ollama_model = model
+            save_ai_settings(self.settings)
+
+            if load_model and not state.model_loaded:
+                self.ollama.load_model(
+                    model=model,
+                    keep_alive=self.settings.ollama_keep_alive,
+                    num_ctx=self.settings.ollama_num_ctx,
+                )
+                state = self.ollama.inspect(model)
+
+            self.events.put(
+                ("ollama_connection", {
+                    "state": state,
+                    "silent": silent,
+                    "error": None,
+                })
+            )
+        except Exception as exc:
+            self.events.put(
+                ("ollama_connection_error", {
+                    "message": str(exc),
+                    "silent": silent,
+                })
+            )
+
+    def load_model_now(self):
+        self.connect_ai_button.configure(state="disabled")
+        self._set_connection_visual(
+            "checking",
+            "AI: URUCHAMIAM MODEL…",
+            f"Ładuję {self.model_var.get().strip() or self.settings.ollama_model} do pamięci.",
+        )
+        threading.Thread(
+            target=self._load_model_worker,
+            daemon=True,
+        ).start()
+
+    def _load_model_worker(self):
+        try:
+            model = self.model_var.get().strip() or self.settings.ollama_model
+            started, message = self.ollama.start_server()
+            if not started:
+                raise RuntimeError(message)
+
+            state = self.ollama.inspect(model)
+            if not state.model_installed:
+                self.events.put(("model_missing", state))
+                return
+
+            self.settings.ai_provider = "ollama"
+            self.settings.demo_mode = False
+            self.settings.ollama_model = model
+            save_ai_settings(self.settings)
+
+            self.ollama.load_model(
+                model=model,
+                keep_alive=self.settings.ollama_keep_alive,
+                num_ctx=self.settings.ollama_num_ctx,
+            )
+            self.events.put(("ollama_state", self.ollama.inspect(model)))
+        except Exception as exc:
+            self.events.put(("ollama_connection_error", {"message": str(exc), "silent": False}))
+
+    def pull_model_now(self):
+        model = self.model_var.get().strip() or self.settings.ollama_model
+        if not messagebox.askyesno(
+            "Pobieranie modelu",
+            f"Pobrać model {model}? Może to zająć kilkanaście lub kilkadziesiąt GB.",
+        ):
+            return
+
+        self.connect_ai_button.configure(state="disabled")
+        self._set_connection_visual(
+            "checking",
+            "AI: POBIERANIE MODELU…",
+            f"Pobieram {model}. Nie zamykaj programu.",
+        )
+        threading.Thread(
+            target=self._pull_model_worker,
+            args=(model,),
+            daemon=True,
+        ).start()
+
+    def _pull_model_worker(self, model: str):
+        try:
+            started, message = self.ollama.start_server()
+            if not started:
+                raise RuntimeError(message)
+            ok, output = self.ollama.pull_model(model)
+            if not ok:
+                raise RuntimeError(output)
+            self.events.put(("model_pulled", self.ollama.inspect(model)))
+        except Exception as exc:
+            self.events.put(("ollama_connection_error", {"message": str(exc), "silent": False}))
+
+    def _periodic_connection_check(self):
+        threading.Thread(
+            target=self._connection_status_worker,
+            daemon=True,
+        ).start()
+        self.after(5000, self._periodic_connection_check)
+
+    def _connection_status_worker(self):
+        try:
+            model = self.model_var.get().strip() or self.settings.ollama_model
+            self.events.put(("ollama_state", self.ollama.inspect(model)))
+        except Exception:
+            pass
 
     def _profile_changed(self, _event=None):
         profile = self.profile_var.get()
