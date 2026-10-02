@@ -25,13 +25,13 @@ class GraphicsAgent(BaseAgent):
                 prompt = self.ai.ask(
                     instructions=(
                         "Jesteś art directorem filmu. Tworzysz pojedynczy precyzyjny prompt po angielsku "
-                        "do Google Veo, opisujący 8-sekundowy klip: akcję, ruch kamery, światło i atmosferę. "
+                        "do Google Veo, opisujący 4-sekundowy klip: akcję, ruch kamery, światło i atmosferę. "
                         "Dbaj o historyczną wiarygodność i spójność między ujęciami. "
                         "Bez dialogów, lektora, napisów, logo i tekstu w kadrze. Odpowiadaj tylko promptem."
                     ),
                     prompt=(
                         f"Temat: {topic}\nOpis ujęcia: {visual}\nKamera: {camera}\n"
-                        f"Światło: {lighting}\nFormat: {aspect_ratio}. Klip ma naturalny ruch i trwa około 8 sekund."
+                        f"Światło: {lighting}\nFormat: {aspect_ratio}. Klip ma naturalny ruch i trwa około 4 sekund."
                     ),
                 )
             prompts.append({"shot": shot.get("shot"), "prompt": prompt})
