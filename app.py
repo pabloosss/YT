@@ -623,9 +623,10 @@ class StudioApp(tk.Tk):
             "AI: ŁĄCZENIE…",
             "Wykrywam Ollamę i sprawdzam lokalny model.",
         )
+        model = self.model_var.get().strip() or self.settings.ollama_model
         threading.Thread(
             target=self._connect_ollama_worker,
-            kwargs={"load_model": False, "silent": True},
+            kwargs={"model": model, "load_model": False, "silent": True},
             daemon=True,
         ).start()
 
@@ -636,15 +637,15 @@ class StudioApp(tk.Tk):
             "AI: ŁĄCZENIE…",
             "Uruchamiam Ollamę i sprawdzam qwen3:30b.",
         )
+        model = self.model_var.get().strip() or self.settings.ollama_model
         threading.Thread(
             target=self._connect_ollama_worker,
-            kwargs={"load_model": True, "silent": False},
+            kwargs={"model": model, "load_model": True, "silent": False},
             daemon=True,
         ).start()
 
-    def _connect_ollama_worker(self, *, load_model: bool, silent: bool):
+    def _connect_ollama_worker(self, *, model: str, load_model: bool, silent: bool):
         try:
-            model = self.model_var.get().strip() or self.settings.ollama_model
             self.ollama.model = model
 
             started, message = self.ollama.start_server()
@@ -704,14 +705,15 @@ class StudioApp(tk.Tk):
             "AI: URUCHAMIAM MODEL…",
             f"Ładuję {self.model_var.get().strip() or self.settings.ollama_model} do pamięci.",
         )
+        model = self.model_var.get().strip() or self.settings.ollama_model
         threading.Thread(
             target=self._load_model_worker,
+            args=(model,),
             daemon=True,
         ).start()
 
-    def _load_model_worker(self):
+    def _load_model_worker(self, model: str):
         try:
-            model = self.model_var.get().strip() or self.settings.ollama_model
             started, message = self.ollama.start_server()
             if not started:
                 raise RuntimeError(message)
@@ -776,8 +778,9 @@ class StudioApp(tk.Tk):
 
     def _connection_status_worker(self):
         try:
-            model = self.model_var.get().strip() or self.settings.ollama_model
-            self.events.put(("ollama_state", self.ollama.inspect(model)))
+            self.events.put(
+                ("ollama_state", self.ollama.inspect(self.settings.ollama_model))
+            )
         except Exception:
             pass
 
@@ -843,34 +846,28 @@ class StudioApp(tk.Tk):
         ).start()
 
     def _refresh_models_worker(self):
-        previous = self.settings.ai_provider
         try:
-            self.settings.ai_provider = "ollama"
-            models = self.ai.list_models()
+            started, message = self.ollama.start_server()
+            if not started:
+                raise RuntimeError(message)
+            models = self.ollama.list_models()
             self.events.put(("models_list", models))
         except Exception as exc:
             self.events.put(("ai_check_error", str(exc)))
-        finally:
-            self.settings.ai_provider = previous
 
     def unload_model_now(self):
-        if self.settings.ai_provider != "ollama":
-            messagebox.showinfo(
-                "Ollama",
-                "Zwalnianie modelu dotyczy tylko Ollamy.",
-            )
-            return
-
+        model = self.model_var.get().strip() or self.settings.ollama_model
         self._write_log("Ollama: zwalniam model z pamięci...")
         threading.Thread(
             target=self._unload_model_worker,
+            args=(model,),
             daemon=True,
         ).start()
 
-    def _unload_model_worker(self):
+    def _unload_model_worker(self, model: str):
         try:
-            self.ai.unload_model()
-            self.events.put(("model_unloaded", None))
+            self.ollama.unload_model(model)
+            self.events.put(("model_unloaded", self.ollama.inspect(model)))
         except Exception as exc:
             self.events.put(("ai_check_error", str(exc)))
 
@@ -928,8 +925,9 @@ class StudioApp(tk.Tk):
 
     def _check_ai_worker(self):
         try:
-            result = self.ai.healthcheck()
-            self.events.put(("ai_check_done", result))
+            state = self.ollama.inspect(self.settings.ollama_model)
+            self.events.put(("ollama_state", state))
+            self.events.put(("ai_check_done", state.message))
         except Exception as exc:
             self.events.put(("ai_check_error", str(exc)))
 
