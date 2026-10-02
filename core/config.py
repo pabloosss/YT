@@ -51,7 +51,7 @@ class Settings:
     veo_model: str = "veo-3.1-fast-generate-preview"
     veo_aspect_ratio: str = "9:16"
     veo_resolution: str = "720p"
-    veo_max_clips: int = 4
+    veo_max_clips: int = 2
     elevenlabs_voice_id: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
     burn_subtitles: bool = True
@@ -101,7 +101,7 @@ def load_settings() -> Settings:
         veo_model=os.getenv("VEO_MODEL", "veo-3.1-fast-generate-preview").strip(),
         veo_aspect_ratio=aspect_ratio,
         veo_resolution=os.getenv("VEO_RESOLUTION", "720p").strip() or "720p",
-        veo_max_clips=4,
+        veo_max_clips=2,
         elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "").strip(),
         elevenlabs_model=os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2").strip(),
         burn_subtitles=_as_bool(os.getenv("BURN_SUBTITLES"), default=True),
