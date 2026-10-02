@@ -77,6 +77,7 @@ class StudioApp(tk.Tk):
         self.ram_limit_text_var = tk.StringVar()
         self.ram_guard_triggered = False
         self.connection_action_in_progress = False
+        self.ram_save_after_id = None
 
         self._build_ui()
         self._update_header()
@@ -512,11 +513,38 @@ class StudioApp(tk.Tk):
     # AI settings / memory
     # ------------------------------------------------------------------
 
-    def auto_connect_ollama(self):
+    def probe_ollama_on_start(self):
         self._set_connection_visual(
             "checking",
-            "AI: ŁĄCZENIE…",
-            "Wykrywam Ollamę i sprawdzam lokalny model.",
+            "AI: SPRAWDZAM…",
+            "Sprawdzam rzeczywisty stan lokalnej Ollamy. Niczego jeszcze nie uruchamiam.",
+        )
+        model = self.model_var.get().strip() or self.settings.ollama_model
+        threading.Thread(
+            target=self._probe_ollama_worker,
+            args=(model,),
+            daemon=True,
+        ).start()
+
+    def _probe_ollama_worker(self, model: str):
+        try:
+            self.events.put(("startup_probe", self.ollama.inspect(model)))
+        except Exception as exc:
+            self.events.put(
+                ("ollama_connection_error", {
+                    "message": str(exc),
+                    "silent": True,
+                })
+            )
+
+    def _auto_start_ollama(self):
+        if self.connection_action_in_progress:
+            return
+        self.connection_action_in_progress = True
+        self._set_connection_visual(
+            "checking",
+            "AI: URUCHAMIAM OLLAMĘ…",
+            "Ollama była wyłączona. AI Content Studio uruchamia lokalny serwer.",
         )
         model = self.model_var.get().strip() or self.settings.ollama_model
         threading.Thread(
@@ -526,11 +554,15 @@ class StudioApp(tk.Tk):
         ).start()
 
     def connect_ollama(self):
+        if self.connection_action_in_progress:
+            return
+
+        self.connection_action_in_progress = True
         self.connect_ai_button.configure(state="disabled")
         self._set_connection_visual(
             "checking",
             "AI: ŁĄCZENIE…",
-            "Uruchamiam Ollamę i sprawdzam qwen3:30b.",
+            "Uruchamiam Ollamę i sprawdzam wybrany model.",
         )
         model = self.model_var.get().strip() or self.settings.ollama_model
         threading.Thread(
@@ -542,8 +574,8 @@ class StudioApp(tk.Tk):
     def _connect_ollama_worker(self, *, model: str, load_model: bool, silent: bool):
         try:
             self.ollama.model = model
-
             started, message = self.ollama.start_server()
+
             if not started:
                 self.events.put(
                     ("ollama_connection", {
@@ -571,6 +603,16 @@ class StudioApp(tk.Tk):
             save_ai_settings(self.settings)
 
             if load_model and not state.model_loaded:
+                allowed, reason = self._ram_budget_allows_model(model)
+                if not allowed:
+                    self.events.put(
+                        ("ram_budget_block", {
+                            "message": reason,
+                            "silent": silent,
+                        })
+                    )
+                    return
+
                 self.ollama.load_model(
                     model=model,
                     keep_alive=self.settings.ollama_keep_alive,
@@ -594,13 +636,22 @@ class StudioApp(tk.Tk):
             )
 
     def load_model_now(self):
+        if self.connection_action_in_progress:
+            return
+
+        model = self.model_var.get().strip() or self.settings.ollama_model
+        allowed, reason = self._ram_budget_allows_model(model)
+        if not allowed:
+            messagebox.showwarning("Limit RAM", reason)
+            return
+
+        self.connection_action_in_progress = True
         self.connect_ai_button.configure(state="disabled")
         self._set_connection_visual(
             "checking",
             "AI: URUCHAMIAM MODEL…",
-            f"Ładuję {self.model_var.get().strip() or self.settings.ollama_model} do pamięci.",
+            f"Ładuję {model} do pamięci w ramach ustawionego limitu RAM.",
         )
-        model = self.model_var.get().strip() or self.settings.ollama_model
         threading.Thread(
             target=self._load_model_worker,
             args=(model,),
@@ -618,6 +669,16 @@ class StudioApp(tk.Tk):
                 self.events.put(("model_missing", state))
                 return
 
+            allowed, reason = self._ram_budget_allows_model(model)
+            if not allowed:
+                self.events.put(
+                    ("ram_budget_block", {
+                        "message": reason,
+                        "silent": False,
+                    })
+                )
+                return
+
             self.settings.ai_provider = "ollama"
             self.settings.demo_mode = False
             self.settings.ollama_model = model
@@ -630,7 +691,12 @@ class StudioApp(tk.Tk):
             )
             self.events.put(("ollama_state", self.ollama.inspect(model)))
         except Exception as exc:
-            self.events.put(("ollama_connection_error", {"message": str(exc), "silent": False}))
+            self.events.put(
+                ("ollama_connection_error", {
+                    "message": str(exc),
+                    "silent": False,
+                })
+            )
 
     def pull_model_now(self):
         model = self.model_var.get().strip() or self.settings.ollama_model
@@ -640,6 +706,7 @@ class StudioApp(tk.Tk):
         ):
             return
 
+        self.connection_action_in_progress = True
         self.connect_ai_button.configure(state="disabled")
         self._set_connection_visual(
             "checking",
@@ -657,18 +724,26 @@ class StudioApp(tk.Tk):
             started, message = self.ollama.start_server()
             if not started:
                 raise RuntimeError(message)
+
             ok, output = self.ollama.pull_model(model)
             if not ok:
                 raise RuntimeError(output)
+
             self.events.put(("model_pulled", self.ollama.inspect(model)))
         except Exception as exc:
-            self.events.put(("ollama_connection_error", {"message": str(exc), "silent": False}))
+            self.events.put(
+                ("ollama_connection_error", {
+                    "message": str(exc),
+                    "silent": False,
+                })
+            )
 
     def _periodic_connection_check(self):
-        threading.Thread(
-            target=self._connection_status_worker,
-            daemon=True,
-        ).start()
+        if not self.connection_action_in_progress:
+            threading.Thread(
+                target=self._connection_status_worker,
+                daemon=True,
+            ).start()
         self.after(5000, self._periodic_connection_check)
 
     def _connection_status_worker(self):
@@ -679,60 +754,71 @@ class StudioApp(tk.Tk):
         except Exception:
             pass
 
-    def _profile_changed(self, _event=None):
-        profile = self.profile_var.get()
-        values = MEMORY_PROFILES.get(profile)
-        if not values:
-            return
-
-        self.ctx_var.set(str(values["num_ctx"]))
-        self.predict_var.set(str(values["num_predict"]))
-        self.keep_alive_var.set(str(values["keep_alive"]))
-        self.unload_var.set(bool(values["unload"]))
-        self.think_var.set(bool(values["think"]))
-
-    def save_ai_controls(self):
+    def _ram_slider_changed(self, _value=None):
         try:
-            provider = self.provider_var.get().strip().lower()
-            if provider not in {"ollama", "openai", "demo"}:
-                raise ValueError("Nieprawidłowy provider.")
+            percent = int(round(float(self.ram_limit_var.get())))
+        except (TypeError, ValueError):
+            percent = self.settings.ollama_ram_limit_percent
 
-            num_ctx = int(self.ctx_var.get())
-            num_predict = int(self.predict_var.get())
-            num_thread = int(self.threads_var.get())
+        percent = max(20, min(90, percent))
+        self.settings.ollama_ram_limit_percent = percent
 
-            if num_ctx < 2048:
-                raise ValueError("Kontekst powinien mieć co najmniej 2048 tokenów.")
-            if num_predict < 128:
-                raise ValueError("Maksymalna odpowiedź jest zbyt mała.")
-            if num_thread < 0:
-                raise ValueError("Liczba wątków nie może być ujemna.")
-
-            self.settings.ai_provider = provider
-            self.settings.demo_mode = provider == "demo"
-            self.settings.ollama_model = self.model_var.get().strip() or "qwen3:30b"
-            self.settings.ollama_num_ctx = num_ctx
-            self.settings.ollama_num_predict = num_predict
-            self.settings.ollama_num_thread = num_thread
-            self.settings.ollama_keep_alive = (
-                self.keep_alive_var.get().strip() or "5m"
+        try:
+            snapshot = get_memory_snapshot()
+            budget_gb = snapshot.total_gb * percent / 100.0
+            self.ram_limit_text_var.set(
+                f"Maks. RAM dla AI: {percent}% = {budget_gb:.1f} GB"
             )
-            self.settings.ollama_think = bool(self.think_var.get())
-            self.settings.ollama_unload_after_request = bool(
-                self.unload_var.get()
+        except Exception:
+            self.ram_limit_text_var.set(
+                f"Maks. RAM dla AI: {percent}%"
             )
 
-            save_ai_settings(self.settings)
-            self.profile_var.set("Własny")
-            self._update_header()
-            self._write_log("Zapisano ustawienia AI / RAM.")
+        if self.ram_save_after_id is not None:
+            try:
+                self.after_cancel(self.ram_save_after_id)
+            except Exception:
+                pass
 
-            messagebox.showinfo(
-                "Ustawienia AI",
-                "Ustawienia zostały zastosowane i zapisane do .env.",
-            )
-        except Exception as exc:
-            messagebox.showerror("Ustawienia AI", str(exc))
+        self.ram_save_after_id = self.after(
+            350,
+            self._save_ram_limit,
+        )
+
+    def _save_ram_limit(self):
+        self.ram_save_after_id = None
+        save_ai_settings(self.settings)
+
+    def _ram_budget(self) -> tuple[float, float]:
+        snapshot = get_memory_snapshot()
+        total_gb = snapshot.total_gb
+        budget_gb = total_gb * self.settings.ollama_ram_limit_percent / 100.0
+        return total_gb, budget_gb
+
+    def _ram_budget_allows_model(self, model: str) -> tuple[bool, str]:
+        try:
+            total_gb, budget_gb = self._ram_budget()
+            size_bytes = self.ollama.model_size_bytes(model)
+            model_gb = size_bytes / (1024 ** 3)
+
+            if model_gb <= 0:
+                return True, ""
+
+            # Zostawiamy zapas na KV cache, runtime i narzut procesu.
+            required_gb = model_gb + max(1.5, model_gb * 0.08)
+
+            if required_gb > budget_gb:
+                required_percent = int((required_gb / total_gb) * 100) + 1
+                return (
+                    False,
+                    f"Limit {self.settings.ollama_ram_limit_percent}% daje {budget_gb:.1f} GB, "
+                    f"a {model} potrzebuje bezpiecznie około {required_gb:.1f} GB. "
+                    f"Ustaw co najmniej około {required_percent}% albo wybierz mniejszy model.",
+                )
+
+            return True, ""
+        except Exception:
+            return True, ""
 
     def refresh_models(self):
         threading.Thread(
