@@ -13,6 +13,7 @@ from core.config import load_settings
 from core.editor import FFmpegEditor
 from core.env_settings import save_ai_settings
 from core.openai_gateway import OpenAIGateway
+from core.ollama_manager import OllamaManager
 from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 from core.system_monitor import get_memory_snapshot
@@ -58,7 +59,7 @@ MEMORY_PROFILES = {
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.5")
+        self.title("AI Content Studio v0.6")
         self.geometry("1180x780")
         self.minsize(980, 680)
 
@@ -71,6 +72,10 @@ class StudioApp(tk.Tk):
         self.pipeline = ContentPipeline(self.store, self.ai, self.settings)
         self.editor = FFmpegEditor(self.settings.ffmpeg_path)
         self.publisher = YouTubePublisher()
+        self.ollama = OllamaManager(
+            base_url=self.settings.ollama_url,
+            model=self.settings.ollama_model,
+        )
 
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.last_project: Path | None = None
@@ -83,6 +88,11 @@ class StudioApp(tk.Tk):
         self.memory_status_var = tk.StringVar(value="RAM: sprawdzanie...")
         self.ollama_status_var = tk.StringVar(value="Ollama: sprawdzanie...")
         self.trace_metrics_var = tk.StringVar(value="Brak metryk.")
+        self.connection_status_var = tk.StringVar(value="AI: sprawdzanie połączenia…")
+        self.connection_detail_var = tk.StringVar(
+            value="Program automatycznie wykryje i uruchomi lokalną Ollamę."
+        )
+        self.connection_state = "checking"
 
         self.provider_var = tk.StringVar(value=self.settings.ai_provider)
         self.model_var = tk.StringVar(value=self.settings.ollama_model)
@@ -100,6 +110,8 @@ class StudioApp(tk.Tk):
         self._update_header()
         self.after(100, self._process_events)
         self.after(500, self._refresh_memory)
+        self.after(250, self.auto_connect_ollama)
+        self.after(3000, self._periodic_connection_check)
 
     # ------------------------------------------------------------------
     # UI
@@ -118,7 +130,37 @@ class StudioApp(tk.Tk):
         ttk.Label(
             root,
             textvariable=self.header_status_var,
-        ).pack(anchor="w", pady=(2, 12))
+        ).pack(anchor="w", pady=(2, 8))
+
+        connection_frame = ttk.LabelFrame(
+            root,
+            text="Połączenie lokalnego AI",
+            padding=10,
+        )
+        connection_frame.pack(fill="x", pady=(0, 12))
+
+        self.connection_label = tk.Label(
+            connection_frame,
+            textvariable=self.connection_status_var,
+            anchor="w",
+            font=("Segoe UI", 12, "bold"),
+            padx=10,
+            pady=7,
+        )
+        self.connection_label.pack(side="left", fill="x", expand=True)
+
+        ttk.Label(
+            connection_frame,
+            textvariable=self.connection_detail_var,
+            wraplength=430,
+        ).pack(side="left", padx=(12, 8))
+
+        self.connect_ai_button = ttk.Button(
+            connection_frame,
+            text="Połącz / uruchom AI",
+            command=self.connect_ollama,
+        )
+        self.connect_ai_button.pack(side="right")
 
         notebook = ttk.Notebook(root)
         notebook.pack(fill="both", expand=True)
@@ -244,7 +286,7 @@ class StudioApp(tk.Tk):
         )
         self.upload_button.pack(side="left", padx=(8, 0))
 
-        ttk.Label(bottom, text="v0.5").pack(side="right")
+        ttk.Label(bottom, text="v0.6").pack(side="right")
 
     def _build_ai_tab(self):
         info = ttk.Label(
@@ -405,13 +447,19 @@ class StudioApp(tk.Tk):
 
         ttk.Button(
             controls,
-            text="Sprawdź AI",
-            command=self.check_ai,
+            text="Połącz / uruchom Ollamę",
+            command=self.connect_ollama,
         ).pack(side="left", padx=(8, 0))
 
         ttk.Button(
             controls,
-            text="Zwolnij RAM teraz",
+            text="Uruchom model",
+            command=self.load_model_now,
+        ).pack(side="left", padx=(8, 0))
+
+        ttk.Button(
+            controls,
+            text="Zwolnij RAM",
             command=self.unload_model_now,
         ).pack(side="left", padx=(8, 0))
 
