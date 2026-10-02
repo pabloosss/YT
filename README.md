@@ -1,6 +1,6 @@
-# AI Content Studio v0.9.1 — TikTok / YouTube Shorts
+# AI Content Studio v0.9.4 — TikTok / YouTube Shorts
 
-Windowsowa aplikacja, która prowadzi projekt od tematu do gotowego pionowego filmu 9:16 o długości 30 sekund. Tekst i decyzje agentów wykonuje lokalny qwen3:8b w Ollamie. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
+Windowsowa aplikacja, która prowadzi projekt od tematu do kompletnego pionowego filmu 9:16. Lokalny qwen3:8b dobiera długość opowieści od 30 do 60 sekund, redaguje tekst lektora i wykonuje końcową kontrolę. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
 
 ## Uruchomienie
 
@@ -18,8 +18,8 @@ Launcher tworzy .venv, instaluje zależności (w tym awaryjną wersję FFmpeg) i
 2. Wklej lokalnie nowy klucz Google AI Studio z dostępem do Veo.
 3. Wklej lokalnie nowy klucz ElevenLabs. Nie używaj klucza ujawnionego wcześniej w rozmowie.
 4. Opcjonalnie podaj Voice ID; bez niego aplikacja wybierze pierwszy głos dostępny na koncie.
-5. Wybierz 16:9 dla YouTube albo 9:16 dla Shorts/TikToka.
-6. Ustaw maksymalną liczbę płatnych klipów Veo.
+5. Format jest ustawiony na pionowe 9:16 dla Shorts i TikToka.
+6. Tryb zbalansowany dobiera 2–3 płatne klipy Veo do długości historii.
 7. Opcjonalnie wybierz własny plik muzyczny, do którego masz prawa.
 8. Kliknij **Sprawdź Veo + głos + FFmpeg**, a potem zapisz ustawienia.
 
@@ -30,14 +30,15 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 1. Research internetowy zbiera wyniki i adresy źródeł.
 2. Lokalny Qwen przygotowuje research, scenariusz i plan ujęć.
 3. Qwen tworzy po angielsku prompty filmowe dla Veo.
-4. Veo 3.1 Lite generuje jeden pionowy klip 4-sekundowy; lokalny montaż wykorzystuje go do pełnych 30 sekund.
-5. ElevenLabs tworzy jednego spójnego lektora i znaczniki czasu.
-6. Aplikacja buduje plik SRT.
-7. FFmpeg łączy klipy, dodaje lektora, cichą muzykę oraz duże wtopione napisy i kończy film dokładnie w 30. sekundzie.
-8. Gotowy film trafia do projects/<projekt>/exports/final.mp4.
-9. Metadata Agent przygotowuje tytuł, opis i tagi. Film można wysłać na YouTube wyłącznie jako PRIVATE.
+4. Lokalny redaktor sprawdza, czy opowieść ma hook, logiczne rozwinięcie i pełny finał, bez urwanych zdań.
+5. Veo 3.1 Lite generuje 2 lub 3 pionowe klipy po 4 sekundy — zależnie od długości historii.
+6. ElevenLabs Turbo v2.5 tworzy jednego spójnego lektora i znaczniki czasu.
+7. Aplikacja buduje plik SRT.
+8. FFmpeg łączy klipy, dodaje lektora, cichą muzykę, napisy oraz łagodne wygaszenie obrazu i dźwięku.
+9. Gotowy film trafia do projects/<projekt>/exports/final.mp4, a klatka podglądowa do thumbnail/thumbnail.jpg.
+10. Metadata Agent przygotowuje tytuł z #Shorts, opis i tagi. Końcowa kontrola Qwen podsumowuje całość i może zablokować automatyczny upload.
 
-Po połączeniu YouTube ukończony film jest automatycznie wysyłany jako PRIVATE. Aplikacja zapisuje ID i link w `08_upload.json` i nie wysyła drugi raz tego samego projektu. Widoczny przycisk **WZNÓW / NAPRAW PROJEKT** kontynuuje starszy lub przerwany projekt od pierwszego brakującego etapu, zachowując gotowe klipy i lektora.
+Po połączeniu YouTube zatwierdzony film jest automatycznie wysyłany jako PRIVATE razem z miniaturą. Aplikacja zapisuje ID i link w `09_upload.json` i nie wysyła drugi raz tego samego projektu. Widoczny przycisk **WZNÓW / NAPRAW PROJEKT** kontynuuje starszy lub przerwany projekt od pierwszego brakującego etapu, zachowując prawidłowe gotowe media.
 
 Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pakiet tekstowy.
 
@@ -56,9 +57,9 @@ Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pak
 
 ## Koszty i bezpieczeństwo
 
-Ollama, planowanie, napisy i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Tryb oszczędny używa jednego klipu Veo 3.1 Lite 720p o długości 4 sekund oraz Eleven Flash v2.5 z tekstem ograniczonym do 60 słów. Przed płatną generacją aplikacja pyta o zgodę, a przy ponowieniu pomija pliki już zapisane na dysku. Aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
+Ollama, planowanie, napisy, kontrola i montaż FFmpeg są lokalne. Koszt generują Veo i ElevenLabs. Tryb zbalansowany używa 2–3 klipów Veo 3.1 Lite 720p po 4 sekundy oraz Eleven Turbo v2.5. Nie ucina mechanicznie tekstu: Qwen skraca lub rozwija go jako zamkniętą historię. Przed płatną generacją aplikacja pyta o zgodę, a przy ponowieniu wykorzystuje prawidłowe pliki już zapisane na dysku. Aplikacja nie zna salda ani aktualnej ceny planu. Nie zamieszczaj .env, client_secret.json ani token.json na GitHubie.
 
-Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu i nie są generowane ponownie podczas ponowienia. Pierwszy pełny test tworzy jeden 4-sekundowy klip Veo Lite, dlatego przed uruchomieniem sprawdź dostęp i koszt na swoim koncie.
+Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częściowe wyniki zostają w folderze projektu i są ponownie używane podczas wznowienia. Pełny projekt tworzy 2 albo 3 czterosekundowe klipy Veo Lite, dlatego przed uruchomieniem sprawdź dostęp i koszt na swoim koncie.
 
 ## Pamięć kanału
 
