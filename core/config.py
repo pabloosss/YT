@@ -22,13 +22,21 @@ class Settings:
     ai_provider: str
     openai_api_key: str
     openai_model: str
+
     ollama_url: str
     ollama_model: str
     ollama_timeout: int
     ollama_keep_alive: str
+    ollama_num_ctx: int
+    ollama_num_predict: int
+    ollama_num_thread: int
+    ollama_think: bool
+    ollama_unload_after_request: bool
+
     demo_mode: bool
     projects_dir: Path
     ffmpeg_path: str
+
     generate_media: bool
     image_model: str
     image_size: str
@@ -60,13 +68,24 @@ def load_settings() -> Settings:
         ai_provider=provider,
         openai_api_key=api_key,
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6").strip(),
+
         ollama_url=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
         ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:30b").strip(),
         ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "900")),
         ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "15m").strip() or "15m",
+        ollama_num_ctx=max(2048, int(os.getenv("OLLAMA_NUM_CTX", "8192"))),
+        ollama_num_predict=max(128, int(os.getenv("OLLAMA_NUM_PREDICT", "2048"))),
+        ollama_num_thread=max(0, int(os.getenv("OLLAMA_NUM_THREAD", "0"))),
+        ollama_think=_as_bool(os.getenv("OLLAMA_THINK"), default=True),
+        ollama_unload_after_request=_as_bool(
+            os.getenv("OLLAMA_UNLOAD_AFTER_REQUEST"),
+            default=False,
+        ),
+
         demo_mode=demo_mode,
         projects_dir=Path(os.getenv("PROJECTS_DIR", "projects")),
         ffmpeg_path=os.getenv("FFMPEG_PATH", "ffmpeg").strip() or "ffmpeg",
+
         generate_media=_as_bool(os.getenv("GENERATE_MEDIA"), default=False),
         image_model=os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-2").strip(),
         image_size=os.getenv("OPENAI_IMAGE_SIZE", "1536x1024").strip(),
