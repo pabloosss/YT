@@ -10,8 +10,13 @@ from core.project_store import ProjectStore
 def main():
     with TemporaryDirectory() as temp:
         settings = Settings(
+            ai_provider="demo",
             openai_api_key="",
             openai_model="gpt-5.6",
+            ollama_url="http://127.0.0.1:11434",
+            ollama_model="qwen3:30b",
+            ollama_timeout=900,
+            ollama_keep_alive="15m",
             demo_mode=True,
             projects_dir=Path(temp),
             ffmpeg_path="ffmpeg",
