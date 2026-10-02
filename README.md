@@ -1,10 +1,10 @@
-# AI Content Studio v0.9.4 — TikTok / YouTube Shorts
+# AI Content Studio v0.9.5 — TikTok / YouTube Shorts
 
-Windowsowa aplikacja, która prowadzi projekt od tematu do kompletnego pionowego filmu 9:16. Lokalny qwen3:8b dobiera długość opowieści od 30 do 60 sekund, redaguje tekst lektora i wykonuje końcową kontrolę. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
+Windowsowa aplikacja, która prowadzi projekt od tematu do kompletnego pionowego filmu 9:16. Domyślny qwen3:14b dobiera długość opowieści od 30 do 60 sekund, redaguje tekst lektora i wykonuje kontrolę planu obrazu oraz końcową kontrolę. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
 
 ## Uruchomienie
 
-Wymagane: Windows, Python 3.11+, Ollama oraz model qwen3:8b.
+Wymagane: Windows, Python 3.11+, Ollama oraz model qwen3:14b. W ustawieniach można przełączyć tryb na szybszy qwen3:8b.
 
     cd "C:\Users\Pablo\Desktop\gra test\YT"
     git pull
@@ -29,12 +29,12 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 
 1. Research internetowy zbiera wyniki i adresy źródeł.
 2. Lokalny Qwen przygotowuje research, scenariusz i plan ujęć.
-3. Qwen tworzy po angielsku prompty filmowe dla Veo.
+3. Qwen tworzy po angielsku prompty filmowe dla Veo, a osobny przebieg lokalnej kontroli poprawia ich spójność, kadr 9:16 i wolne miejsce pod napisy.
 4. Lokalny redaktor sprawdza, czy opowieść ma hook, logiczne rozwinięcie i pełny finał, bez urwanych zdań.
 5. Veo 3.1 Lite generuje 2 lub 3 pionowe klipy po 4 sekundy — zależnie od długości historii.
 6. ElevenLabs Turbo v2.5 tworzy jednego spójnego lektora i znaczniki czasu.
 7. Aplikacja buduje plik SRT.
-8. FFmpeg łączy klipy, dodaje lektora, cichą muzykę, napisy oraz łagodne wygaszenie obrazu i dźwięku.
+8. FFmpeg łączy klipy, dodaje lektora, cichą muzykę, małe napisy przy dolnej krawędzi oraz łagodne wygaszenie obrazu i dźwięku.
 9. Gotowy film trafia do projects/<projekt>/exports/final.mp4, a klatka podglądowa do thumbnail/thumbnail.jpg.
 10. Metadata Agent przygotowuje tytuł z #Shorts, opis i tagi. Końcowa kontrola Qwen podsumowuje całość i może zablokować automatyczny upload.
 
@@ -67,7 +67,9 @@ Zakładka **Pamięć kanału** zapisuje lokalnie nazwę kanału, odbiorców, sty
 
 ## RAM
 
-Projekt zawsze używa qwen3:8b. Domyślny budżet to 50% z 32 GB RAM, a kontekst 4096. Strażnik RAM jest miękkim zabezpieczeniem aplikacji, nie twardym limitem Windows.
+Domyślny tryb dokładny używa qwen3:14b, a tryb szybki qwen3:8b. Przy zmianie aplikacja zwalnia drugi model, aby nie trzymać obu jednocześnie. Ustawienia serwera ograniczają Ollamę do jednego modelu i jednego zapytania naraz, włączają Flash Attention i cache q8_0. Domyślny budżet to 50% z 32 GB RAM, a kontekst 4096. Strażnik RAM jest miękkim zabezpieczeniem aplikacji, nie twardym limitem Windows.
+
+Qwen3 jest modelem tekstowym: kontroluje scenariusz, opis ujęć, prompty, bezpieczne strefy napisów i parametry techniczne. Nie ogląda rzeczywistych klatek wygenerowanego filmu. Pionowy format, długość oraz stały profil małych napisów są sprawdzane i egzekwowane przez aplikację oraz FFmpeg.
 
 ## Testy
 
