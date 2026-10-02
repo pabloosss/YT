@@ -32,7 +32,15 @@ class ElevenLabsClient:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:700]
-            raise RuntimeError(f"ElevenLabs HTTP {exc.code}: {detail}") from exc
+            if exc.code == 401:
+                message = "ElevenLabs odrzucił klucz. Utwórz nowy klucz i nie używaj klucza ujawnionego w rozmowie."
+            elif exc.code == 403:
+                message = "Klucz ElevenLabs nie ma wymaganych uprawnień. Włącz Text to Speech oraz odczyt Voices."
+            elif exc.code == 429:
+                message = "ElevenLabs odrzucił żądanie z powodu limitu lub braku kredytów."
+            else:
+                message = f"ElevenLabs HTTP {exc.code}"
+            raise RuntimeError(f"{message} Szczegóły: {detail}") from exc
         except (URLError, TimeoutError) as exc:
             raise RuntimeError(f"Nie można połączyć z ElevenLabs: {exc}") from exc
 
@@ -49,7 +57,13 @@ class ElevenLabsClient:
         return str(voices[0].get("voice_id") or "")
 
     def healthcheck(self, preferred_voice_id: str = "") -> str:
-        voice_id = self.resolve_voice_id(preferred_voice_id)
+        voices = self.voices()
+        if not voices:
+            raise RuntimeError("Na koncie ElevenLabs nie znaleziono żadnego głosu.")
+        available = {str(item.get("voice_id") or "") for item in voices}
+        voice_id = preferred_voice_id.strip() or str(voices[0].get("voice_id") or "")
+        if preferred_voice_id.strip() and voice_id not in available:
+            raise RuntimeError("Wybrany Voice ID nie jest dostępny dla tego klucza ElevenLabs.")
         return f"ElevenLabs: połączono · głos {voice_id}"
 
     def synthesize(
