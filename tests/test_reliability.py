@@ -153,10 +153,10 @@ class ReliabilityTests(unittest.TestCase):
             self.assertEqual(settings.ollama_ram_limit_percent, 50)
             self.assertEqual(settings.ollama_num_ctx, 4096)
             self.assertEqual(settings.veo_aspect_ratio, "9:16")
-            self.assertEqual(settings.veo_max_clips, 1)
+            self.assertEqual(settings.veo_max_clips, 3)
             self.assertEqual(settings.veo_duration_seconds, 4)
             self.assertEqual(settings.veo_model, "veo-3.1-lite-generate-preview")
-            self.assertEqual(settings.elevenlabs_model, "eleven_flash_v2_5")
+            self.assertEqual(settings.elevenlabs_model, "eleven_turbo_v2_5")
         with patch.dict(os.environ, {"OLLAMA_RAM_LIMIT_PERCENT": "99"}):
             self.assertEqual(load_settings().ollama_ram_limit_percent, 90)
 
