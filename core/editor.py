@@ -94,6 +94,44 @@ class FFmpegEditor:
             raise RuntimeError("Nie można odczytać długości lektora.")
         return int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
 
+    def prepare_shot(self, *, source: Path, output: Path, duration_seconds: float,
+                     is_image: bool = False, movement: int = 0) -> Path:
+        """Create one exact-duration vertical shot without looping its source."""
+        executable = self._executable()
+        if not executable:
+            raise RuntimeError("FFmpeg nie jest dostępny.")
+        duration = max(1.0, float(duration_seconds))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if is_image:
+            zoom = "min(zoom+0.0007,1.12)" if movement % 2 == 0 else "if(lte(zoom,1.0),1.12,max(1.0,zoom-0.0007))"
+            x = "iw/2-(iw/zoom/2)" if movement % 3 == 0 else "min(iw-iw/zoom,on*0.35)"
+            filters = (
+                "scale=900:1600:force_original_aspect_ratio=increase,crop=900:1600,"
+                f"zoompan=z='{zoom}':x='{x}':y='ih/2-(ih/zoom/2)':"
+                f"d={max(1, round(duration * 30))}:s=720x1280:fps=30,format=yuv420p"
+            )
+            command = [
+                executable, "-y", "-loop", "1", "-i", str(source), "-vf", filters,
+                "-t", f"{duration:.3f}", "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-an", str(output),
+            ]
+        else:
+            source_duration = max(0.1, self.media_duration(source))
+            speed_factor = duration / source_duration
+            filters = (
+                f"setpts={speed_factor:.6f}*PTS,scale=720:1280:force_original_aspect_ratio=increase,"
+                "crop=720:1280,fps=30,format=yuv420p"
+            )
+            command = [
+                executable, "-y", "-i", str(source), "-vf", filters,
+                "-t", f"{duration:.3f}", "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                "-an", str(output),
+            ]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0 or not output.exists() or output.stat().st_size < 1024:
+            raise RuntimeError(f"Nie udało się przygotować ujęcia {output.name}:\n{result.stderr[-1800:]}")
+        return output
+
     @staticmethod
     def _concat_path(path: Path) -> str:
         return path.resolve().as_posix().replace("'", "'\\''")
