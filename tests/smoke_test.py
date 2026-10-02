@@ -11,12 +11,24 @@ def main():
     with TemporaryDirectory() as temp:
         settings = Settings(
             openai_api_key="",
-            openai_model="gpt-5.6-sol",
+            openai_model="gpt-5.6",
             demo_mode=True,
             projects_dir=Path(temp),
             ffmpeg_path="ffmpeg",
+            generate_media=False,
+            image_model="gpt-image-2",
+            image_size="1536x1024",
+            image_quality="low",
+            tts_model="gpt-4o-mini-tts",
+            tts_voice="coral",
+            tts_instructions="Mów naturalnie po polsku.",
         )
-        pipeline = ContentPipeline(ProjectStore(settings.projects_dir), OpenAIGateway(settings))
+
+        pipeline = ContentPipeline(
+            ProjectStore(settings.projects_dir),
+            OpenAIGateway(settings),
+            settings,
+        )
         project = pipeline.run("Test AI Content Studio")
 
         required = [
@@ -26,7 +38,11 @@ def main():
             "03_shots.json",
             "04_image_prompts.json",
             "05_narration.txt",
+            "06_quality.json",
+            "07_youtube.json",
+            "pipeline_result.json",
         ]
+
         missing = [name for name in required if not (project.path / name).exists()]
         if missing:
             raise SystemExit(f"Brakuje plików: {missing}")
