@@ -5,11 +5,17 @@ cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
     echo Tworze srodowisko Python...
     py -m venv .venv
-    call .venv\Scripts\activate.bat
-    python -m pip install --upgrade pip
-    pip install -r requirements.txt
-) else (
-    call .venv\Scripts\activate.bat
+)
+
+call .venv\Scripts\activate.bat
+
+echo Sprawdzam zaleznosci...
+python -m pip install --disable-pip-version-check -q -r requirements.txt
+if errorlevel 1 (
+    echo.
+    echo Nie udalo sie zainstalowac zaleznosci.
+    pause
+    exit /b 1
 )
 
 python app.py
