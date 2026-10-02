@@ -22,14 +22,14 @@ class ReliabilityTests(unittest.TestCase):
             memory = ChannelMemory(Path(temp))
             memory.save({"rules": "Bez clickbaitu", "knowledge": "Daty wymagają źródeł"})
             self.assertIn("Bez clickbaitu", ChannelMemory(Path(temp)).context())
-            original = memory.path.read_text()
+            original = memory.path.read_text(encoding="utf-8")
             with self.assertRaises(ValueError):
                 memory.save({"rules": "x" * 4001})
-            self.assertEqual(original, memory.path.read_text())
-            memory.path.write_text("broken")
+            self.assertEqual(original, memory.path.read_text(encoding="utf-8"))
+            memory.path.write_text("broken", encoding="utf-8")
             with self.assertRaises(RuntimeError):
                 memory.load()
-            self.assertEqual(memory.path.read_text(), "broken")
+            self.assertEqual(memory.path.read_text(encoding="utf-8"), "broken")
 
     def test_source_validation_deduplication_and_empty_error(self):
         result = normalize_results("historia", [
@@ -71,8 +71,8 @@ class ReliabilityTests(unittest.TestCase):
             pipeline = self.pipeline(root)
             with patch("core.pipeline.search_web", side_effect=AssertionError("demo must be offline")):
                 project = pipeline.run("Demo")
-            self.assertIn("krótkie zdania", (project.path / "00_channel_profile.txt").read_text())
-            self.assertEqual(json.loads((project.path / "state.json").read_text())["status"], "completed")
+            self.assertIn("krótkie zdania", (project.path / "00_channel_profile.txt").read_text(encoding="utf-8"))
+            self.assertEqual(json.loads((project.path / "state.json").read_text(encoding="utf-8"))["status"], "completed")
             self.assertEqual(pipeline.ai.channel_context, "")
 
     def test_failed_research_preserves_project_and_does_not_make_script(self):
@@ -83,7 +83,7 @@ class ReliabilityTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "offline"):
                     pipeline.run("test")
             project = next(p for p in Path(temp).iterdir() if p.is_dir())
-            self.assertEqual(json.loads((project / "state.json").read_text())["status"], "failed")
+            self.assertEqual(json.loads((project / "state.json").read_text(encoding="utf-8"))["status"], "failed")
             self.assertFalse((project / "02_script.txt").exists())
 
     def test_stop_keeps_finished_stage_and_stops_next_agent(self):
@@ -98,7 +98,7 @@ class ReliabilityTests(unittest.TestCase):
             project = next(p for p in Path(temp).iterdir() if p.is_dir())
             self.assertTrue((project / "01_research.md").exists())
             self.assertFalse((project / "02_script.txt").exists())
-            self.assertEqual(json.loads((project / "state.json").read_text())["status"], "cancelled")
+            self.assertEqual(json.loads((project / "state.json").read_text(encoding="utf-8"))["status"], "cancelled")
 
     def test_channel_context_is_in_actual_model_instructions(self):
         settings = load_settings()
