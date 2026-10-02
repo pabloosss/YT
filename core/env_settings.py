@@ -30,6 +30,7 @@ def save_ai_settings(settings: Settings, env_path: Path = Path(".env")) -> None:
         "OLLAMA_UNLOAD_AFTER_REQUEST": (
             "true" if settings.ollama_unload_after_request else "false"
         ),
+        "OLLAMA_RAM_LIMIT_PERCENT": str(settings.ollama_ram_limit_percent),
     }
 
     for key, value in values.items():
