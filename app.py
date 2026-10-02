@@ -1396,9 +1396,9 @@ class StudioApp(tk.Tk):
         if self.settings.demo_mode:
             mode = "DEMO"
         elif self.settings.ai_provider == "ollama":
-            mode = f"OLLAMA · {self.settings.ollama_model}"
+            mode = f"OLLAMA · {self.settings.ollama_model} (wybrany silnik)"
         else:
-            mode = f"OPENAI · {self.settings.openai_model}"
+            mode = f"OPENAI · {self.settings.openai_model} (wybrany silnik)"
 
         ffmpeg = "OK" if self.editor.available() else "BRAK"
         media = "ON" if self.settings.generate_media else "OFF"
@@ -1409,7 +1409,7 @@ class StudioApp(tk.Tk):
         )
 
         self.header_status_var.set(
-            f"Tryb: {mode}    |    Media: {media}    |    "
+            f"Silnik: {mode}    |    Media: {media}    |    "
             f"FFmpeg: {ffmpeg}    |    YouTube: {youtube}"
         )
 
