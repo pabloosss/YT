@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
-
 from agents.base import BaseAgent
+from core.json_utils import loads_relaxed
 
 
 class MetadataAgent(BaseAgent):
@@ -34,7 +33,7 @@ class MetadataAgent(BaseAgent):
             ),
         )
 
-        data = json.loads(raw)
+        data = loads_relaxed(raw)
         title = str(data.get("title") or topic).strip()[:100]
         tags = data.get("tags") or []
         if not isinstance(tags, list):
