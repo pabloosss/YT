@@ -1,10 +1,10 @@
-# Poprawka v0.8.1 — połączenie i tematy wyszukiwane przez AI
+# AI Content Studio — lokalny qwen3:8b
 
-- Domyślny silnik to Ollama. Starsze domyślne ustawienie DEMO jest migrowane; świadomy wybór DEMO zapisany w nowej wersji pozostaje zachowany.
+- Silnik tekstowy jest ustawiony na stałe: lokalna Ollama i `qwen3:8b`. Poprzednie wartości `AI_PROVIDER` oraz `OLLAMA_MODEL` w `.env` nie zmieniają tego wyboru.
 - Górny przycisk „Włącz / połącz Ollamę” uruchamia serwer i sprawdza model bez ładowania go do RAM. Limit pamięci nie blokuje połączenia.
 - „AI: znajdź tematy” automatycznie przygotowuje model, zleca AI plan zapytań, wykonuje wyszukiwania i przekazuje źródła do AI, które wybiera tematy, hooki i uzasadnienia. Profil kanału jest używany. Wyniki i źródła zapisują się w Projekty.
 - Start projektu i wyszukiwanie łączą Ollamę i ładują model bez ponownego klikania. Status załadowania jest potwierdzany przez serwer.
-- Poprawiono profil 32 GB: starsze domyślne 50% / kontekst 8192 dla qwen3:30b przechodzi na 75% / 4096. Limit nadal odnosi się do rzeczywistego RAM wykrytego w systemie.
+- Profil 32 GB używa domyślnie 50% RAM i kontekstu 4096.
 - Usunięto sztywną blokadę „brakuje dodatkowych 3 GB”. Mała ilość wolnej pamięci daje informację, nie blokuje połączenia. Budżet modelu i monitor RAM pozostają aktywne; nie gwarantują ochrony przed wyczerpaniem pamięci.
 
 # AI Content Studio
@@ -23,7 +23,7 @@ git pull
 
 ## Prosta obsługa
 
-1. **Ustawienia**: wybierz `ollama`, model i zapisz. Dla 32 GB RAM + `qwen3:30b` użyj „Zastosuj profil 32 GB”: budżet 75%, kontekst 4096. Starsze domyślne ustawienia Qwen są migrowane do profilu 32 GB.
+1. **Ustawienia**: projekt używa zawsze lokalnej Ollamy i `qwen3:8b`. Domyślny budżet przy 32 GB RAM to 50%, a kontekst 4096.
 2. **Pamięć kanału**: wpisz odbiorców, styl, zasady i własną wiedzę; kliknij „Zapisz pamięć”.
 3. **Tworzenie**: wpisz temat. Możesz wcześniej kliknąć „AI: znajdź tematy” — dostaniesz inspiracje z linkami. Wpisz wybrany temat i kliknij „Przygotuj projekt”.
 4. **Projekty**: przeglądaj wyniki także po ponownym uruchomieniu aplikacji. Otwórz folder, sprawdź pliki, a gotowy film możesz wysłać jako PRIVATE.
@@ -63,11 +63,11 @@ Przy zmianie `PROJECTS_DIR` pamięć i historia są odczytywane z nowej lokaliza
 
 ## RAM i stabilność
 
-Domyślny budżet: 75%, suwak 20–90%, kontekst 4096. 75% z 32 GB to około 24 GB. To punkt startowy, nie gwarancja zmieszczenia każdego modelu: rozmiar zależy od wariantu, kontekstu i pozostałych procesów. Aplikacja sprawdza oszacowanie rozmiaru oraz dostępny RAM. Gdy model nie mieści się, wybierz np. `qwen3:8b` i pobierz go z GUI.
+Domyślny budżet: 50%, suwak 20–90%, kontekst 4096. 50% z 32 GB to około 16 GB. Aplikacja sprawdza rozmiar `qwen3:8b` oraz dostępny RAM.
 
 Monitor sprawdza procesy Ollamy co kilka sekund. Po przekroczeniu budżetu sygnalizuje zatrzymanie produkcji i próbuje zwolnić wybrany model. To **miękki strażnik**, nie limit systemowy ani gwarancja zapobieżenia wyczerpaniu RAM. Zwalnianie aktywnego modelu może poczekać na zakończenie żądania. Monitor obejmuje również inne procesy Ollamy, ale nie zarządza ich zadaniami.
 
-Sprawdzanie połączenia i żądania modelu odbywają się poza wątkiem interfejsu. Powtórne kliknięcie/Enter nie uruchamia równoległej produkcji. Jawny wybór silnika pozostaje zachowany; starszy domyślny tryb demo jest migrowany na Ollamę. Dla skonfigurowanej Ollamy start najpierw pokazuje realny stan, a potem próbuje uruchomić serwer.
+Sprawdzanie połączenia i żądania modelu odbywają się poza wątkiem interfejsu. Powtórne kliknięcie/Enter nie uruchamia równoległej produkcji. Aplikacja zawsze łączy się z lokalną Ollamą i `qwen3:8b`.
 
 ## Granice wersji
 

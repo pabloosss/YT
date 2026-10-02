@@ -170,24 +170,20 @@ class StudioApp(tk.Tk):
         ttk.Label(row, text="Maks. 4000 znaków. Zapis lokalny: projects/_memory/channel_profile.json").pack(side="left")
 
     def _settings_ui(self):
-        ttk.Label(self.settings_tab, text="Silnik tekstowy").pack(anchor="w")
-        self.provider_combo = ttk.Combobox(self.settings_tab, textvariable=self.provider, values=("ollama", "openai", "demo"), state="readonly")
-        self.provider_combo.pack(anchor="w", pady=5)
-        ttk.Label(self.settings_tab, text="Model Ollama (qwen3:30b lub mniejszy qwen3:8b)").pack(anchor="w")
-        self.model_combo = ttk.Combobox(self.settings_tab, textvariable=self.model, width=40)
-        self.model_combo.pack(anchor="w", pady=5)
+        ttk.Label(self.settings_tab, text="Lokalne AI: Ollama · qwen3:8b",
+                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        ttk.Label(self.settings_tab, text="Projekt zawsze używa tego modelu. Nie trzeba wybierać silnika ani wpisywać nazwy modelu.").pack(anchor="w", pady=(2, 8))
         ttk.Label(self.settings_tab, textvariable=self.ram_label, font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(12, 0))
         self.ram_scale = ttk.Scale(self.settings_tab, from_=20, to=90, variable=self.ram, command=self._ram_text)
         self.ram_scale.pack(fill="x", pady=8)
         self._ram_text()
-        ttk.Label(self.settings_tab, text="Dla 32 GB i Qwen 30B: punkt startowy 75% (około 24 GB), kontekst 4096.\n"
+        ttk.Label(self.settings_tab, text="Dla 32 GB i Qwen 8B: domyślnie 50% RAM, kontekst 4096.\n"
                   "To budżet kontrolowany przez aplikację, nie twardy limit systemowy. Inne programy też potrzebują RAM.\n"
-                  "Stary domyślny profil Qwen 30B (50% / 8192) jest aktualizowany do 75% / 4096.", wraplength=1000).pack(anchor="w")
+                  "Model uruchamia się automatycznie przy wyszukiwaniu lub tworzeniu projektu.", wraplength=1000).pack(anchor="w")
         row = ttk.Frame(self.settings_tab)
         row.pack(fill="x", pady=8)
-        self._button(row, "Zastosuj profil 32 GB", self.ram_preset)
         self._button(row, "Zapisz ustawienia", self.save_settings)
-        self._button(row, "Połącz / załaduj AI", lambda: self.model_action("load"))
+        self._button(row, "Połącz / załaduj qwen3:8b", lambda: self.model_action("load"))
         row = ttk.Frame(self.settings_tab)
         row.pack(fill="x")
         self._button(row, "Pobierz model", lambda: self.model_action("pull"))
@@ -204,7 +200,7 @@ class StudioApp(tk.Tk):
         self.ram_label.set(f"Maks. RAM dla AI: {round(self.ram.get())}% (zakres 20–90%)")
 
     def ram_preset(self):
-        self.ram.set(75)
+        self.ram.set(50)
         self._ram_text()
         self.settings.ollama_num_ctx = 4096
         self.save_settings()
@@ -212,12 +208,11 @@ class StudioApp(tk.Tk):
     def save_settings(self):
         if self.busy:
             return False
-        if self.provider.get() == "openai" and not self.settings.openai_api_key:
-            messagebox.showwarning("OpenAI", "Dodaj OPENAI_API_KEY do .env i uruchom ponownie aplikację.")
-            return False
-        self.settings.ai_provider = self.provider.get()
-        self.settings.demo_mode = self.provider.get() == "demo"
-        self.settings.ollama_model = self.model.get().strip() or "qwen3:30b"
+        self.settings.ai_provider = "ollama"
+        self.settings.demo_mode = False
+        self.settings.ollama_model = "qwen3:8b"
+        self.provider.set("ollama")
+        self.model.set("qwen3:8b")
         self.settings.ollama_ram_limit_percent = max(20, min(90, round(self.ram.get())))
         self.settings.generate_media = self.media.get()
         try:
@@ -240,8 +235,6 @@ class StudioApp(tk.Tk):
         self.busy = busy
         for button in self.actions:
             button.configure(state="disabled" if busy else "normal")
-        self.provider_combo.configure(state="disabled" if busy else "readonly")
-        self.model_combo.configure(state="disabled" if busy else "normal")
         for widget in (self.ram_scale, self.media_check, self.internet_check):
             widget.configure(state="disabled" if busy else "normal")
         self.stop_button.configure(state="disabled")
@@ -277,7 +270,7 @@ class StudioApp(tk.Tk):
         budget = snapshot.total_gb * self.settings.ollama_ram_limit_percent / 100
         if required > budget:
             raise RuntimeError(f"AI: LIMIT RAM ZA NISKI. Budżet {budget:.1f} GB, szacowane minimum {required:.1f} GB. "
-                               "Zastosuj profil 32 GB albo wybierz qwen3:8b w Ustawieniach.")
+                               "Zwiększ limit RAM w Ustawieniach.")
         additional = max(0, required - snapshot.ollama_ram_gb) if state.model_loaded else required
         if additional > snapshot.available_gb:
             self.events.put(("progress", "Mało wolnego RAM. Ładuję model w ustawionym budżecie; zamknij zbędne programy, jeśli system zwalnia."))
@@ -364,6 +357,7 @@ class StudioApp(tk.Tk):
         if self.busy:
             return
         self.provider.set("ollama")
+        self.model.set("qwen3:8b")
         self.model_action("connect")
 
     def model_action(self, action):
@@ -422,7 +416,6 @@ class StudioApp(tk.Tk):
         else:
             text = "AI: OLLAMA WYŁĄCZONA" if state.installed else "AI: OLLAMA NIEZNALEZIONA"
         self.connection.set(text)
-        self.model_combo["values"] = state.models
 
     def _handle_poll(self, snapshot, state, provider):
         self.polling = False

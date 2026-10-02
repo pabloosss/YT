@@ -17,12 +17,12 @@ def save_ai_settings(settings: Settings, env_path: Path = Path(".env")) -> None:
         env_path.write_text("", encoding="utf-8")
 
     values = {
-        "AI_STUDIO_SETTINGS_VERSION": "3",
+        "AI_STUDIO_SETTINGS_VERSION": "4",
         "GENERATE_MEDIA": "true" if settings.generate_media else "false",
-        "AI_PROVIDER": settings.ai_provider,
-        "AI_STUDIO_DEMO": "true" if settings.demo_mode else "false",
+        "AI_PROVIDER": "ollama",
+        "AI_STUDIO_DEMO": "false",
         "OLLAMA_URL": settings.ollama_url,
-        "OLLAMA_MODEL": settings.ollama_model,
+        "OLLAMA_MODEL": "qwen3:8b",
         "OLLAMA_TIMEOUT": str(settings.ollama_timeout),
         "OLLAMA_KEEP_ALIVE": settings.ollama_keep_alive,
         "OLLAMA_NUM_CTX": str(settings.ollama_num_ctx),

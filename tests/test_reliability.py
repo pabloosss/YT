@@ -122,7 +122,7 @@ class ReliabilityTests(unittest.TestCase):
     def test_ram_defaults_and_clamping(self):
         with patch.dict(os.environ, {}, clear=True):
             settings = load_settings()
-            self.assertEqual(settings.ollama_ram_limit_percent, 75)
+            self.assertEqual(settings.ollama_ram_limit_percent, 50)
             self.assertEqual(settings.ollama_num_ctx, 4096)
         with patch.dict(os.environ, {"OLLAMA_RAM_LIMIT_PERCENT": "99"}):
             self.assertEqual(load_settings().ollama_ram_limit_percent, 90)
@@ -133,17 +133,15 @@ if __name__ == "__main__":
 
 
 class ConnectionAndTopicsTests(unittest.TestCase):
-    def test_legacy_config_migrates_to_32gb_ollama(self):
+    def test_project_is_always_fixed_to_qwen_8b(self):
         with patch.dict(os.environ, {"AI_PROVIDER": "demo", "AI_STUDIO_DEMO": "true",
                                      "OLLAMA_MODEL": "qwen3:30b", "OLLAMA_RAM_LIMIT_PERCENT": "50",
                                      "OLLAMA_NUM_CTX": "8192"}, clear=True):
             settings = load_settings()
             self.assertEqual(settings.ai_provider, "ollama")
             self.assertFalse(settings.demo_mode)
-            self.assertEqual(settings.ollama_ram_limit_percent, 75)
-            self.assertEqual(settings.ollama_num_ctx, 4096)
-        with patch.dict(os.environ, {"AI_PROVIDER": "demo", "AI_STUDIO_SETTINGS_VERSION": "3"}, clear=True):
-            self.assertTrue(load_settings().demo_mode)
+            self.assertEqual(settings.ollama_model, "qwen3:8b")
+            self.assertEqual(settings.ollama_ram_limit_percent, 50)
 
     def test_ai_plans_queries_then_uses_real_search_results(self):
         from agents.topics import TopicsAgent

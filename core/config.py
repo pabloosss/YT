@@ -49,29 +49,11 @@ class Settings:
 
 def load_settings() -> Settings:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    provider = os.getenv(
-        "AI_PROVIDER",
-        "openai" if api_key else "ollama",
-    ).strip().lower()
-
-    if provider not in {"demo", "openai", "ollama"}:
-        provider = "ollama"
-
-    # Older launchers wrote demo by default. Migrate that legacy default once;
-    # an explicit demo selection saved by the current UI remains respected.
-    if provider == "demo" and os.getenv("AI_STUDIO_SETTINGS_VERSION") not in {"2", "3"}:
-        provider = "ollama"
-
-    demo_mode = provider == "demo"
-    ram_percent = int(os.getenv("OLLAMA_RAM_LIMIT_PERCENT", "75"))
+    # Text generation is intentionally fixed to one local engine/model.
+    provider = "ollama"
+    demo_mode = False
+    ram_percent = int(os.getenv("OLLAMA_RAM_LIMIT_PERCENT", "50"))
     context = int(os.getenv("OLLAMA_NUM_CTX", "4096"))
-    if os.getenv("AI_STUDIO_SETTINGS_VERSION") not in {"2", "3"}:
-        # Repair the old 50% / 8192 defaults for the user's 32 GB Qwen setup.
-        if os.getenv("OLLAMA_MODEL", "qwen3:30b").strip() == "qwen3:30b":
-            if ram_percent == 50:
-                ram_percent = 75
-            if context == 8192:
-                context = 4096
 
     return Settings(
         ai_provider=provider,
@@ -79,7 +61,7 @@ def load_settings() -> Settings:
         openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6").strip(),
 
         ollama_url=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
-        ollama_model=os.getenv("OLLAMA_MODEL", "qwen3:30b").strip(),
+        ollama_model="qwen3:8b",
         ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT", "900")),
         ollama_keep_alive=os.getenv("OLLAMA_KEEP_ALIVE", "15m").strip() or "15m",
         ollama_num_ctx=max(2048, context),
