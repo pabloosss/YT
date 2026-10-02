@@ -1,6 +1,12 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import patch
+
+from core.config import load_settings
+from core.openai_gateway import OpenAIGateway
+from core.pipeline import ContentPipeline
+from core.project_store import ProjectStore
 
 from core.elevenlabs_client import ElevenLabsClient
 from core.subtitles import alignment_to_srt, clean_narration
@@ -28,6 +34,37 @@ class SubtitleTests(unittest.TestCase):
     def test_elevenlabs_requires_key_before_network(self):
         with self.assertRaisesRegex(RuntimeError, "ELEVENLABS_API_KEY"):
             ElevenLabsClient("").voices()
+
+    def test_recovery_reuses_clips_without_calling_veo(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = root / "failed_project"
+            (project / "video_clips").mkdir(parents=True)
+            (project / "audio").mkdir()
+            (project / "subtitles").mkdir()
+            (project / "02_script.txt").write_text("Gotowy tekst.", encoding="utf-8")
+            (project / "video_clips" / "shot_001.mp4").write_bytes(b"saved veo")
+            (project / "audio" / "narration.mp3").write_bytes(b"saved voice")
+            (project / "subtitles" / "narration.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nTest\n", encoding="utf-8")
+
+            settings = load_settings()
+            settings.projects_dir = root
+            pipeline = ContentPipeline(ProjectStore(root), OpenAIGateway(settings), settings)
+
+            def render(**kwargs):
+                output = kwargs["output"]
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"finished")
+                return output
+
+            pipeline.editor.available = lambda: True
+            pipeline.editor.render_clips = render
+            with patch("core.pipeline.VeoClient", side_effect=AssertionError("Veo must not be called")):
+                output = pipeline.finish_existing(project)
+
+            self.assertTrue(output.exists())
+            recovery = (project / "recovery_result.json").read_text(encoding="utf-8")
+            self.assertIn('"veo_called_again": false', recovery)
 
 
 if __name__ == "__main__":
