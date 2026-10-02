@@ -51,10 +51,10 @@ class Settings:
     veo_model: str = "veo-3.1-lite-generate-preview"
     veo_aspect_ratio: str = "9:16"
     veo_resolution: str = "720p"
-    veo_max_clips: int = 1
+    veo_max_clips: int = 3
     veo_duration_seconds: int = 4
     elevenlabs_voice_id: str = ""
-    elevenlabs_model: str = "eleven_flash_v2_5"
+    elevenlabs_model: str = "eleven_turbo_v2_5"
     burn_subtitles: bool = True
     music_path: str = ""
 
@@ -102,10 +102,10 @@ def load_settings() -> Settings:
         veo_model="veo-3.1-lite-generate-preview",
         veo_aspect_ratio=aspect_ratio,
         veo_resolution=os.getenv("VEO_RESOLUTION", "720p").strip() or "720p",
-        veo_max_clips=1,
+        veo_max_clips=3,
         veo_duration_seconds=4,
         elevenlabs_voice_id=os.getenv("ELEVENLABS_VOICE_ID", "").strip(),
-        elevenlabs_model="eleven_flash_v2_5",
+        elevenlabs_model="eleven_turbo_v2_5",
         burn_subtitles=_as_bool(os.getenv("BURN_SUBTITLES"), default=True),
         music_path=os.getenv("MUSIC_PATH", "").strip(),
     )
