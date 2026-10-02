@@ -35,7 +35,7 @@ AI_MODES = {
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.9.5 · Shorts 30–60 s")
+        self.title("AI Content Studio v0.9.6 · Shorts 30–60 s")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -238,7 +238,7 @@ class StudioApp(tk.Tk):
             options, textvariable=self.video_format, state="readonly", values=("9:16",), width=10
         )
         self.format_combo.grid(row=1, column=0, sticky="w", padx=(0, 18))
-        ttk.Label(options, text="Tryb zbalansowany: 2–3 klipy Veo Lite × 4 s").grid(row=0, column=1, sticky="w")
+        ttk.Label(options, text="Hybryda: 2–3 Veo + 5–9 unikalnych ujęć").grid(row=0, column=1, sticky="w")
         self.clips_spin = ttk.Spinbox(options, from_=3, to=3, textvariable=self.max_clips, width=8, state="readonly")
         self.clips_spin.grid(row=1, column=1, sticky="w", padx=(0, 18))
         ttk.Label(options, text="Voice ID ElevenLabs (opcjonalnie)").grid(row=0, column=2, sticky="w")
@@ -434,7 +434,8 @@ class StudioApp(tk.Tk):
                 return
             if not messagebox.askyesno(
                 "Koszt Veo",
-                "Tryb zbalansowany wygeneruje 2 lub 3 płatne klipy Veo Lite po 4 sekundy. "
+                "Tryb hybrydowy wygeneruje 2 lub 3 płatne klipy Veo Lite oraz dobierze darmowe, "
+                "unikalne ilustracje z Wikimedia Commons. Nic nie będzie zapętlane. "
                 "Lokalne AI dobierze długość filmu od 30 do 60 sekund. Kontynuować?",
             ):
                 return
@@ -716,10 +717,8 @@ class StudioApp(tk.Tk):
 
         generate_veo = len(clips) < 3
         def work():
-            text_ready = script.exists() and (project / "07_youtube.json").exists() and (project / "08_ai_review.json").exists()
-            prompt_exists = (project / "04_video_prompts.json").exists() or (project / "04_image_prompts.json").exists()
-            if not text_ready or (generate_veo and not prompt_exists):
-                self._prepare_ai()
+            # Recovery also re-runs the local supervisor and visual-plan gate.
+            self._prepare_ai()
             return self.pipeline.finish_existing(
                 project,
                 allow_generate_veo=generate_veo,
