@@ -154,7 +154,7 @@ class ContentPipeline:
             clips = veo.generate_all(
                 prompts=prompts,
                 output_dir=project_path / "video_clips",
-                max_clips=4,
+                max_clips=self.settings.veo_max_clips,
                 progress=lambda index, total: callback("Grafika", f"VEO {index}/{total}"),
             )
             generated_veo = True
