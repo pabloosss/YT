@@ -37,6 +37,8 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 8. Gotowy film trafia do projects/<projekt>/exports/final.mp4.
 9. Metadata Agent przygotowuje tytuł, opis i tagi. Film można wysłać na YouTube wyłącznie jako PRIVATE.
 
+Po połączeniu YouTube ukończony film jest automatycznie wysyłany jako PRIVATE. Aplikacja zapisuje ID i link w `08_upload.json` i nie wysyła drugi raz tego samego projektu. Widoczny przycisk **WZNÓW / NAPRAW PROJEKT** kontynuuje starszy lub przerwany projekt od pierwszego brakującego etapu, zachowując gotowe klipy i lektora.
+
 Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pakiet tekstowy.
 
 ## Pliki projektu
