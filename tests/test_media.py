@@ -65,6 +65,7 @@ class SubtitleTests(unittest.TestCase):
             (project / "audio").mkdir()
             (project / "subtitles").mkdir()
             (project / "02_script.txt").write_text("Gotowy tekst.", encoding="utf-8")
+            (project / "07_youtube.json").write_text('{"title":"Test"}', encoding="utf-8")
             (project / "video_clips" / "shot_001.mp4").write_bytes(b"v" * 2048)
             (project / "audio" / "narration.mp3").write_bytes(b"a" * 2048)
             (project / "subtitles" / "narration.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nTest\n", encoding="utf-8")
@@ -95,6 +96,7 @@ class SubtitleTests(unittest.TestCase):
             (project / "video_clips").mkdir(parents=True)
             (project / "audio").mkdir()
             (project / "02_script.txt").write_text("Gotowy tekst.", encoding="utf-8")
+            (project / "07_youtube.json").write_text('{"title":"Test"}', encoding="utf-8")
             (project / "04_video_prompts.json").write_text(
                 '[{"shot": 1, "prompt": "test"}]', encoding="utf-8"
             )
@@ -125,6 +127,39 @@ class SubtitleTests(unittest.TestCase):
 
             self.assertTrue(output.exists())
             self.assertTrue((project / "subtitles" / "narration.srt").exists())
+
+    def test_recovery_resumes_before_missing_script_and_creates_metadata(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            project = root / "old_project"
+            (project / "video_clips").mkdir(parents=True)
+            (project / "audio").mkdir()
+            (project / "subtitles").mkdir()
+            (project / "01_research.md").write_text("Sprawdzony research.", encoding="utf-8")
+            (project / "video_clips" / "shot_001.mp4").write_bytes(b"v" * 2048)
+            (project / "audio" / "narration.mp3").write_bytes(b"a" * 2048)
+
+            settings = load_settings()
+            settings.projects_dir = root
+            pipeline = ContentPipeline(ProjectStore(root), OpenAIGateway(settings), settings)
+            pipeline.editor.available = lambda: True
+            pipeline.editor.render_clips = lambda **kwargs: kwargs["output"]
+
+            def render(**kwargs):
+                output = kwargs["output"]
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"finished")
+                return output
+
+            pipeline.editor.render_clips = render
+            with patch.object(pipeline.script_agent, "run", return_value="Odtworzony scenariusz."), \
+                 patch.object(pipeline.metadata_agent, "run", return_value={"title": "Odtworzony", "description": "#shorts", "tags": []}):
+                output = pipeline.finish_existing(project)
+
+            self.assertTrue(output.exists())
+            self.assertTrue((project / "02_script.txt").exists())
+            self.assertTrue((project / "07_youtube.json").exists())
+            self.assertIn('"recovered": true', (project / "state.json").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
