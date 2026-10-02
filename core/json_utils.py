@@ -14,8 +14,8 @@ def loads_relaxed(raw: str):
 
     fence = "`" * 3
     if text.startswith(fence):
-        text = re.sub(r"^\\s*`{3}(?:json)?\\s*", "", text, count=1, flags=re.IGNORECASE)
-        text = re.sub(r"\\s*`{3}\\s*$", "", text, count=1)
+        text = re.sub(r"^\s*`{3}(?:json)?\s*", "", text, count=1, flags=re.IGNORECASE)
+        text = re.sub(r"\s*`{3}\s*$", "", text, count=1)
 
     try:
         return json.loads(text)
@@ -35,4 +35,20 @@ def loads_relaxed(raw: str):
     if end < start:
         raise ValueError("Model zwrócił niepełny JSON.")
 
-    return json.loads(text[start:end + 1])
+    candidate = text[start:end + 1]
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        # Small local models sometimes omit a comma between JSON fields.
+        repaired = re.sub(
+            r'(")(\s*\n\s*)("(?=[^"\n]+"\s*:))',
+            r'\1,\2\3',
+            candidate,
+        )
+        repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Model zwrócił niepoprawny JSON: {exc.msg} (wiersz {exc.lineno})."
+            ) from exc
