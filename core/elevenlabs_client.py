@@ -32,7 +32,9 @@ class ElevenLabsClient:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:700]
-            if exc.code == 401:
+            if "quota_exceeded" in detail or "credits remaining" in detail:
+                message = "Limit kredytów klucza ElevenLabs jest za niski dla tego lektora. Zwiększ limit klucza lub saldo konta."
+            elif exc.code == 401:
                 message = "ElevenLabs odrzucił klucz. Utwórz nowy klucz i nie używaj klucza ujawnionego w rozmowie."
             elif exc.code == 403:
                 message = "Klucz ElevenLabs nie ma wymaganych uprawnień. Włącz Text to Speech oraz odczyt Voices."
@@ -73,7 +75,7 @@ class ElevenLabsClient:
         output_audio: Path,
         output_srt: Path,
         voice_id: str = "",
-        model_id: str = "eleven_multilingual_v2",
+        model_id: str = "eleven_flash_v2_5",
     ) -> tuple[Path, Path]:
         narration = clean_narration(text)
         if not narration:
