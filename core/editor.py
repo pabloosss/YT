@@ -46,7 +46,7 @@ class FFmpegEditor:
     def _subtitle_filter(path: Path) -> str:
         value = path.resolve().as_posix().replace("\\", "/")
         value = value.replace(":", "\\:").replace("'", "\\'")
-        style = "FontName=Arial,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=38"
+        style = "FontName=Arial,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1,Alignment=2,MarginV=90"
         return f"subtitles='{value}':force_style='{style}'"
 
     def render_clips(
@@ -97,13 +97,13 @@ class FFmpegEditor:
         if has_audio and has_music:
             command += [
                 "-filter_complex",
-                "[1:a]volume=1.0[voice];[2:a]volume=0.12[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]",
-                "-map", "[aout]", "-c:a", "aac", "-shortest",
+                "[1:a]apad=pad_dur=30,atrim=0:30,volume=1.0[voice];[2:a]volume=0.12[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+                "-map", "[aout]", "-c:a", "aac", "-t", "30",
             ]
         elif has_audio:
-            command += ["-map", "1:a:0", "-c:a", "aac", "-shortest"]
+            command += ["-map", "1:a:0", "-af", "apad=pad_dur=30,atrim=0:30", "-c:a", "aac", "-t", "30"]
         else:
-            command += ["-an"]
+            command += ["-an", "-t", "30"]
         command += ["-movflags", "+faststart", str(output)]
 
         result = subprocess.run(command, capture_output=True, text=True, check=False)
