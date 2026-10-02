@@ -144,6 +144,7 @@ class StudioApp(tk.Tk):
         self.project_combo.pack(side="left", fill="x", expand=True, padx=(0, 8))
         self.project_combo.bind("<<ComboboxSelected>>", self._select_project)
         self._button(top, "Odśwież", self._refresh_projects)
+        self._button(top, "Importuj scenariusz", self.import_script)
         self._button(top, "Otwórz folder", self.open_project)
         self.file_combo = ttk.Combobox(self.projects, state="readonly")
         self.file_combo.pack(fill="x", pady=8)
@@ -598,6 +599,34 @@ class StudioApp(tk.Tk):
             os.startfile(path)
         else:
             subprocess.Popen(["xdg-open", str(path)])
+
+    def import_script(self):
+        source = filedialog.askopenfilename(
+            title="Wybierz stary scenariusz",
+            filetypes=[("Scenariusz", "*.txt *.md"), ("Wszystkie pliki", "*.*")],
+        )
+        if not source:
+            return
+        try:
+            path = Path(source)
+            script = path.read_text(encoding="utf-8-sig").strip()
+            if not script:
+                raise ValueError("Wybrany plik jest pusty.")
+            project = self.store.create("Import: " + path.stem)
+            project.write_text("02_script.txt", script)
+            project.write_json(
+                "state.json",
+                {"status": "imported", "agent": "Scenariusz", "source_file": str(path)},
+            )
+            self.last_project = project.path
+            self._refresh_projects()
+            self.summary.set("Scenariusz zaimportowany. Kliknij „Dokończ wybrany projekt”.")
+            messagebox.showinfo(
+                "Import zakończony",
+                "Scenariusz dodano do Projektów. Teraz wybierz „Dokończ wybrany projekt”.",
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            messagebox.showerror("Import scenariusza", str(exc))
 
     def finish_last_project(self):
         if not self.last_project:
