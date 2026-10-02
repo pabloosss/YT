@@ -31,7 +31,7 @@ AGENTS = ["Research", "Scenariusz", "Showrunner", "Grafika", "Lektor", "Montaż"
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.9")
+        self.title("AI Content Studio v0.9.1 · Shorts 30 s")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -188,10 +188,10 @@ class StudioApp(tk.Tk):
         self._ram_text()
 
         ttk.Separator(self.settings_tab).pack(fill="x", pady=8)
-        ttk.Label(self.settings_tab, text="Pełny film", font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        ttk.Label(self.settings_tab, text="Pionowy film 30 s · TikTok / YouTube Shorts", font=("Segoe UI", 13, "bold")).pack(anchor="w")
         self.media_check = ttk.Checkbutton(
             self.settings_tab,
-            text="Generuj klipy Veo, lektora ElevenLabs, napisy i gotowy MP4",
+            text="Generuj pionowy film 9:16: Veo + lektor + napisy + MP4",
             variable=self.media,
         )
         self.media_check.pack(anchor="w", pady=(4, 6))
@@ -211,11 +211,11 @@ class StudioApp(tk.Tk):
         options.pack(fill="x", pady=8)
         ttk.Label(options, text="Format").grid(row=0, column=0, sticky="w")
         self.format_combo = ttk.Combobox(
-            options, textvariable=self.video_format, state="readonly", values=("16:9", "9:16"), width=10
+            options, textvariable=self.video_format, state="readonly", values=("9:16",), width=10
         )
         self.format_combo.grid(row=1, column=0, sticky="w", padx=(0, 18))
-        ttk.Label(options, text="Maks. liczba klipów Veo").grid(row=0, column=1, sticky="w")
-        self.clips_spin = ttk.Spinbox(options, from_=1, to=12, textvariable=self.max_clips, width=8)
+        ttk.Label(options, text="Klipy Veo (4 × około 8 s)").grid(row=0, column=1, sticky="w")
+        self.clips_spin = ttk.Spinbox(options, from_=4, to=4, textvariable=self.max_clips, width=8, state="readonly")
         self.clips_spin.grid(row=1, column=1, sticky="w", padx=(0, 18))
         ttk.Label(options, text="Voice ID ElevenLabs (opcjonalnie)").grid(row=0, column=2, sticky="w")
         self.voice_entry = ttk.Entry(options, textvariable=self.elevenlabs_voice, width=34)
@@ -268,12 +268,10 @@ class StudioApp(tk.Tk):
         self.settings.google_api_key = self.google_key.get().strip()
         self.settings.elevenlabs_api_key = self.elevenlabs_key.get().strip()
         self.settings.elevenlabs_voice_id = self.elevenlabs_voice.get().strip()
-        self.settings.veo_aspect_ratio = self.video_format.get()
-        try:
-            self.settings.veo_max_clips = max(1, min(12, int(self.max_clips.get())))
-        except (ValueError, tk.TclError):
-            messagebox.showerror("Ustawienia", "Liczba klipów Veo musi być liczbą od 1 do 12.")
-            return False
+        self.settings.veo_aspect_ratio = "9:16"
+        self.video_format.set("9:16")
+        self.settings.veo_max_clips = 4
+        self.max_clips.set(4)
         self.settings.music_path = self.music_path.get().strip()
         try:
             save_ai_settings(self.settings)
@@ -332,6 +330,7 @@ class StudioApp(tk.Tk):
                        self.music_entry, self.clips_spin):
             widget.configure(state="disabled" if busy else "normal")
         self.format_combo.configure(state="disabled" if busy else "readonly")
+        self.clips_spin.configure(state="disabled" if busy else "readonly")
         self.stop_button.configure(state="disabled")
 
     def _job(self, label, work, done):
