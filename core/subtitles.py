@@ -19,6 +19,20 @@ def clean_narration(text: str) -> str:
     return value
 
 
+def short_narration(text: str, *, max_words: int = 60, max_characters: int = 550) -> str:
+    """Keep paid TTS input within the length of a 30-second Short."""
+    selected: list[str] = []
+    for word in clean_narration(text).split():
+        candidate = " ".join([*selected, word])
+        if len(selected) >= max_words or len(candidate) > max_characters:
+            break
+        selected.append(word)
+    value = " ".join(selected).strip()
+    if value and value[-1] not in ".!?…":
+        value = value.rstrip(",;:–—-") + "."
+    return value
+
+
 def _srt_time(seconds: float) -> str:
     milliseconds = max(0, round(seconds * 1000))
     hours, milliseconds = divmod(milliseconds, 3_600_000)
