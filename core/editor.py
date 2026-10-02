@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -38,6 +39,61 @@ class FFmpegEditor:
         first = result.stdout.splitlines()[0] if result.stdout else "FFmpeg"
         return first + (" · wersja dołączona do aplikacji" if "imageio" in executable.lower() else "")
 
+    def inspect_short(self, video: Path) -> dict:
+        executable = self._executable()
+        if not executable:
+            raise RuntimeError("FFmpeg nie jest dostępny.")
+        result = subprocess.run(
+            [executable, "-hide_banner", "-i", str(video)],
+            capture_output=True, text=True, check=False,
+        )
+        details = result.stderr + "\n" + result.stdout
+        dimensions = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", details)
+        duration = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", details)
+        if not dimensions or not duration:
+            raise RuntimeError("Nie można odczytać parametrów gotowego filmu.")
+        width, height = int(dimensions.group(1)), int(dimensions.group(2))
+        seconds = int(duration.group(1)) * 3600 + int(duration.group(2)) * 60 + float(duration.group(3))
+        return {
+            "width": width,
+            "height": height,
+            "duration_seconds": round(seconds, 2),
+            "vertical": height > width,
+            "short_eligible": height > width and 1 <= seconds <= 180,
+        }
+
+    def create_thumbnail(self, video: Path, output: Path) -> Path:
+        executable = self._executable()
+        if not executable:
+            raise RuntimeError("FFmpeg nie jest dostępny.")
+        output.parent.mkdir(parents=True, exist_ok=True)
+        filters = (
+            "[0:v]split=2[bg][fg];"
+            "[bg]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,gblur=sigma=24[back];"
+            "[fg]scale=-2:720[front];[back][front]overlay=(W-w)/2:0"
+        )
+        result = subprocess.run(
+            [executable, "-y", "-ss", "2", "-i", str(video), "-frames:v", "1",
+             "-filter_complex", filters, "-q:v", "2", str(output)],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode != 0 or not output.exists() or output.stat().st_size < 1024:
+            raise RuntimeError(f"Nie udało się utworzyć miniatury:\n{result.stderr[-1500:]}")
+        return output
+
+    def media_duration(self, media: Path) -> float:
+        executable = self._executable()
+        if not executable:
+            raise RuntimeError("FFmpeg nie jest dostępny.")
+        result = subprocess.run(
+            [executable, "-hide_banner", "-i", str(media)],
+            capture_output=True, text=True, check=False,
+        )
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", result.stderr + result.stdout)
+        if not match:
+            raise RuntimeError("Nie można odczytać długości lektora.")
+        return int(match.group(1)) * 3600 + int(match.group(2)) * 60 + float(match.group(3))
+
     @staticmethod
     def _concat_path(path: Path) -> str:
         return path.resolve().as_posix().replace("'", "'\\''")
@@ -58,6 +114,7 @@ class FFmpegEditor:
         subtitles: Path | None = None,
         music: Path | None = None,
         aspect_ratio: str = "16:9",
+        duration_seconds: int = 30,
     ) -> Path:
         executable = self._executable()
         if not executable:
@@ -84,6 +141,8 @@ class FFmpegEditor:
         if has_music:
             command += ["-stream_loop", "-1", "-i", str(music)]
 
+        duration_seconds = max(30, min(60, int(duration_seconds)))
+        fade_start = max(0, duration_seconds - 2)
         width, height = (720, 1280) if aspect_ratio == "9:16" else (1280, 720)
         filters = [
             f"scale={width}:{height}:force_original_aspect_ratio=increase",
@@ -91,19 +150,20 @@ class FFmpegEditor:
         ]
         if subtitles and subtitles.exists():
             filters.append(self._subtitle_filter(subtitles))
+        filters.append(f"fade=t=out:st={duration_seconds - 1.5}:d=1.5")
         filters.append("format=yuv420p")
 
         command += ["-map", "0:v:0", "-vf", ",".join(filters), "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
         if has_audio and has_music:
             command += [
                 "-filter_complex",
-                "[1:a]apad=pad_dur=30,atrim=0:30,volume=1.0[voice];[2:a]volume=0.12[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]",
-                "-map", "[aout]", "-c:a", "aac", "-t", "30",
+                f"[1:a]apad=pad_dur={duration_seconds},atrim=0:{duration_seconds},afade=t=out:st={fade_start}:d=2,volume=1.0[voice];[2:a]volume=0.12,afade=t=out:st={fade_start}:d=2[music];[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+                "-map", "[aout]", "-c:a", "aac", "-t", str(duration_seconds),
             ]
         elif has_audio:
-            command += ["-map", "1:a:0", "-af", "apad=pad_dur=30,atrim=0:30", "-c:a", "aac", "-t", "30"]
+            command += ["-map", "1:a:0", "-af", f"apad=pad_dur={duration_seconds},atrim=0:{duration_seconds},afade=t=out:st={fade_start}:d=2", "-c:a", "aac", "-t", str(duration_seconds)]
         else:
-            command += ["-an", "-t", "30"]
+            command += ["-an", "-t", str(duration_seconds)]
         command += ["-movflags", "+faststart", str(output)]
 
         result = subprocess.run(command, capture_output=True, text=True, check=False)
