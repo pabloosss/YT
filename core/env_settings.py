@@ -15,8 +15,9 @@ def save_ai_settings(settings: Settings, env_path: Path = Path(".env")) -> None:
         env_path.write_text("", encoding="utf-8")
 
     values = {
-        "AI_STUDIO_SETTINGS_VERSION": "6",
+        "AI_STUDIO_SETTINGS_VERSION": "7",
         "GENERATE_MEDIA": "true" if settings.generate_media else "false",
+        "STUDIO_QUALITY_MODE": settings.quality_mode,
         "AI_PROVIDER": "ollama",
         "AI_STUDIO_DEMO": "false",
         "OLLAMA_URL": settings.ollama_url,
