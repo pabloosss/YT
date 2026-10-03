@@ -21,12 +21,13 @@ from core.openai_gateway import OpenAIGateway
 from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
 from core.studio_memory import StudioMemory
+from core.test_clip import TestClipPipeline
 from core.system_monitor import get_memory_snapshot
 from core.veo_client import VeoClient
 from core.web_research import search_web, source_text
 from core.youtube_publisher import UploadRequest, YouTubePublisher
 
-AGENTS = ["Research", "Scenariusz", "Showrunner", "Lektor", "Grafika", "Montaż", "Kontrola", "YouTube Meta"]
+AGENTS = ["Dyrektor", "Research", "Scenariusz", "Showrunner", "Grafika", "Lektor", "Montaż", "Kontrola", "YouTube Meta"]
 AI_MODES = {
     "Dokładny — qwen3:14b": "qwen3:14b",
     "Szybki — qwen3:8b": "qwen3:8b",
@@ -36,7 +37,7 @@ AI_MODES = {
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.10.0 · lokalny reżyser AI")
+        self.title("AI Content Studio v0.11.0 · studio agentów")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
@@ -73,9 +74,10 @@ class StudioApp(tk.Tk):
         self.model = tk.StringVar(value=self.settings.ollama_model)
         selected_mode = next(
             (label for label, model in AI_MODES.items() if model == self.settings.ollama_model),
-            next(iter(AI_MODES)),
+            self.settings.ollama_model,
         )
         self.ai_mode = tk.StringVar(value=selected_mode)
+        self.quality_mode = tk.StringVar(value="Dokładnie — 2 kontrole" if self.settings.quality_mode == "careful" else "Standardowo")
         self.ram = tk.DoubleVar(value=self.settings.ollama_ram_limit_percent)
         self.ram_label = tk.StringVar()
         self.connection = tk.StringVar(value="AI: sprawdzam rzeczywisty stan…")
@@ -135,6 +137,7 @@ class StudioApp(tk.Tk):
         resume_row = ttk.Frame(self.studio)
         resume_row.pack(fill="x")
         self._button(resume_row, "WZNÓW / NAPRAW OSTATNI PROJEKT", self.finish_last_project)
+        self._button(resume_row, "TEST 4 s — obraz + głos", self.start_test_clip)
         ttk.Label(self.studio, textvariable=self.summary, wraplength=1000).pack(anchor="w", pady=8)
         stages = ttk.Frame(self.studio)
         stages.pack(fill="x", pady=4)
@@ -176,9 +179,15 @@ class StudioApp(tk.Tk):
         ttk.Label(bottom, text="Najpierw sprawdź źródła, treść i gotowy film.").pack(side="left", padx=8)
 
     def _memory_ui(self):
-        ttk.Label(self.channel, text="Tutaj uczysz aplikację swoich zasad. Pamięć trafia do agentów przy każdym nowym projekcie.\n"
+        notebook = ttk.Notebook(self.channel)
+        notebook.pack(fill="both", expand=True)
+        profile_tab = ttk.Frame(notebook, padding=6)
+        lessons_tab = ttk.Frame(notebook, padding=6)
+        notebook.add(profile_tab, text="Moje instrukcje")
+        notebook.add(lessons_tab, text="Propozycje i zatwierdzone zasady")
+        ttk.Label(profile_tab, text="Tutaj uczysz aplikację swoich zasad. Pamięć trafia do agentów przy każdym nowym projekcie.\n"
                   "To pamięć kontekstowa, nie trening wag modelu. AI zapisuje tylko ogólne wnioski produkcyjne "
-                  "z zatwierdzonych filmów — nigdy fakty z odcinka ani klucze API.",
+                  "jako propozycje. Dopiero Twoja akceptacja włącza je do instrukcji kolejnych projektów.",
                   wraplength=1000).pack(anchor="w", pady=(0, 8))
         self.memory_fields = {}
         try:
@@ -188,21 +197,26 @@ class StudioApp(tk.Tk):
             self.after(100, lambda error=str(exc): messagebox.showerror("Pamięć", error))
         labels = ["Nazwa kanału", "Odbiorcy i tematyka", "Styl narracji i obrazu", "Zasady / czego unikać", "Własna wiedza i poprawki (podaj źródła)"]
         for key, label in zip(FIELDS, labels):
-            ttk.Label(self.channel, text=label).pack(anchor="w")
-            widget = ScrolledText(self.channel, height=1 if key == "name" else 2, wrap="word")
+            ttk.Label(profile_tab, text=label).pack(anchor="w")
+            widget = ScrolledText(profile_tab, height=1 if key == "name" else 2, wrap="word")
             widget.insert("1.0", profile.get(key, ""))
             widget.pack(fill="both", expand=key != "name", pady=(2, 6))
             self.memory_fields[key] = widget
-        row = ttk.Frame(self.channel)
+        row = ttk.Frame(profile_tab)
         row.pack(fill="x")
         self._button(row, "Zapisz pamięć", self.save_memory)
         ttk.Label(row, text="Maks. 4000 znaków. Zapis lokalny: projects/_memory/channel_profile.json").pack(side="left")
-        ttk.Separator(self.channel).pack(fill="x", pady=8)
-        ttk.Label(self.channel, text="Czego lokalne AI nauczyło się z zatwierdzonych filmów",
+        ttk.Label(lessons_tab, text="Wnioski AI wymagają oceny człowieka; samoocena modelu nie jest dowodem poprawy.",
                   font=("Segoe UI", 11, "bold")).pack(anchor="w")
-        self.learned_memory = ScrolledText(self.channel, height=5, wrap="word", state="disabled")
+        self.learned_memory = ScrolledText(lessons_tab, height=5, wrap="word", state="disabled")
         self.learned_memory.pack(fill="both", expand=True, pady=(4, 4))
-        learned_row = ttk.Frame(self.channel)
+        self.lesson_choice = ttk.Combobox(lessons_tab, state="readonly")
+        self.lesson_choice.pack(fill="x", pady=4)
+        decision_row = ttk.Frame(lessons_tab)
+        decision_row.pack(fill="x")
+        self._button(decision_row, "Zatwierdź wybraną zasadę", lambda: self.decide_lesson(True))
+        self._button(decision_row, "Odrzuć wybraną zasadę", lambda: self.decide_lesson(False))
+        learned_row = ttk.Frame(lessons_tab)
         learned_row.pack(fill="x")
         self._button(learned_row, "Odśwież wnioski AI", self.refresh_learned_memory)
         self._button(learned_row, "Wyczyść wnioski AI", self.clear_learned_memory)
@@ -215,11 +229,16 @@ class StudioApp(tk.Tk):
         ttk.Label(self.settings_tab, text="Dokładny 14B lepiej kontroluje historię i plan filmu; szybki 8B zużywa mniej pamięci.").pack(anchor="w")
         mode_row = ttk.Frame(self.settings_tab)
         mode_row.pack(fill="x", pady=(8, 2))
-        ttk.Label(mode_row, text="Tryb AI").pack(side="left", padx=(0, 8))
+        ttk.Label(mode_row, text="Model AI").pack(side="left", padx=(0, 8))
         self.ai_mode_combo = ttk.Combobox(
-            mode_row, textvariable=self.ai_mode, state="readonly", values=tuple(AI_MODES), width=30
+            mode_row, textvariable=self.ai_mode, state="readonly",
+            values=tuple(dict.fromkeys([*AI_MODES, self.ai_mode.get()])), width=30
         )
         self.ai_mode_combo.pack(side="left")
+        self._button(mode_row, "Modele z Ollamy", self.refresh_local_models)
+        self.quality_combo = ttk.Combobox(mode_row, textvariable=self.quality_mode, state="readonly",
+                                        values=("Dokładnie — 2 kontrole", "Standardowo"), width=24)
+        self.quality_combo.pack(side="left", padx=8)
         ttk.Label(self.settings_tab, textvariable=self.ram_label, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(8, 0))
         self.ram_scale = ttk.Scale(self.settings_tab, from_=20, to=90, variable=self.ram, command=self._ram_text)
         self.ram_scale.pack(fill="x", pady=(2, 6))
@@ -298,7 +317,8 @@ class StudioApp(tk.Tk):
             return False
         self.settings.ai_provider = "ollama"
         self.settings.demo_mode = False
-        self.settings.ollama_model = AI_MODES.get(self.ai_mode.get(), "qwen3:14b")
+        self.settings.quality_mode = "standard" if self.quality_mode.get() == "Standardowo" else "careful"
+        self.settings.ollama_model = AI_MODES.get(self.ai_mode.get(), self.ai_mode.get())
         self.provider.set("ollama")
         self.model.set(self.settings.ollama_model)
         self.ollama.model = self.settings.ollama_model
@@ -367,8 +387,26 @@ class StudioApp(tk.Tk):
     def refresh_learned_memory(self):
         try:
             self._text(self.learned_memory, self.studio_memory.display())
+            self.lesson_choice["values"] = [f"{i+1}. {row.get('lesson', '')[:80]}" for i, row in enumerate(self.studio_memory.load())]
+            self.lesson_choice.set("")
         except Exception as exc:
             self._text(self.learned_memory, "Nie można odczytać wniosków AI: " + str(exc))
+
+    def decide_lesson(self, approve):
+        if self.busy:
+            return
+        index = self.lesson_choice.current()
+        if index < 0:
+            messagebox.showinfo("Pamięć", "Wybierz zasadę z listy.")
+            return
+        self.studio_memory.decide(index, approve=approve)
+        self.refresh_learned_memory()
+
+    def refresh_local_models(self):
+        def done(models):
+            self.ai_mode_combo["values"] = tuple(dict.fromkeys([*AI_MODES, *models, self.ai_mode.get()]))
+            self.summary.set("Wybierz zainstalowany model i zapisz ustawienia. Zmiana nie pobiera modeli; limit RAM nadal obowiązuje.")
+        self._job("Odczytuję zainstalowane modele Ollamy", self.ai.list_models, done)
 
     def clear_learned_memory(self):
         if not messagebox.askyesno(
@@ -394,6 +432,7 @@ class StudioApp(tk.Tk):
         self.format_combo.configure(state="disabled" if busy else "readonly")
         self.clips_spin.configure(state="disabled" if busy else "readonly")
         self.ai_mode_combo.configure(state="disabled" if busy else "readonly")
+        self.quality_combo.configure(state="disabled" if busy else "readonly")
         self.stop_button.configure(state="disabled")
 
     def _job(self, label, work, done):
@@ -433,7 +472,7 @@ class StudioApp(tk.Tk):
             self.events.put(("progress", "Mało wolnego RAM. Ładuję model w ustawionym budżecie; zamknij zbędne programy, jeśli system zwalnia."))
         self.events.put(("connection", "AI: ŁADUJĘ MODEL…"))
         for loaded_model in self.ollama.loaded_models():
-            if loaded_model != model and loaded_model in set(AI_MODES.values()):
+            if loaded_model != model:
                 self.ollama.unload_model(loaded_model)
         self.ollama.load_model(model=model, num_ctx=self.settings.ollama_num_ctx,
                                keep_alive=self.settings.ollama_keep_alive)
@@ -441,6 +480,29 @@ class StudioApp(tk.Tk):
         if not confirmed.connected or not confirmed.model_loaded:
             raise RuntimeError("Ollama nie potwierdziła załadowania modelu. " + confirmed.message)
         self.events.put(("connection", "AI: POŁĄCZONO · MODEL ZAŁADOWANY"))
+
+    def start_test_clip(self):
+        if self.busy or not self.save_settings():
+            return
+        if not self.settings.google_api_key or not self.settings.elevenlabs_api_key:
+            messagebox.showwarning("Test", "Uzupełnij klucze Veo i ElevenLabs w Ustawieniach.")
+            return
+        if not messagebox.askyesno("Płatna próbka 4 s", "Test zamówi najwyżej 1 klip Veo (4 s) i 1 krótki lektor. "
+                                 "Doda napisy i zmontuje MP4. Bez publikacji, uczenia i automatycznych płatnych ponowień. Kontynuować?"):
+            return
+        topic = self.topic.get().strip() or "Kot w spokojnym ogrodzie"
+        self.cancel.clear()
+        def work():
+            self._prepare_ai()
+            return TestClipPipeline(self.store, self.ai, self.settings).run(
+                topic, cancel=self.cancel, status=lambda a, s: self.events.put(("stage", (a, s))))
+        def done(project):
+            self.last_project = project.path
+            self._refresh_projects()
+            self.summary.set("Test gotowy: " + str(project.path / "exports" / "test_4s.mp4"))
+            self._text(self.results, "Obejrzyj i odsłuchaj exports/test_4s.mp4 w folderze projektu. Test nie jest publikowany ani zapamiętywany jako udany odcinek.")
+        self._job("Testuję obraz, głos, napisy i montaż", work, done)
+        self.stop_button.configure(state="normal")
 
     def start_pipeline(self):
         if self.busy:
@@ -782,6 +844,10 @@ class StudioApp(tk.Tk):
         self._publish_project_private(self.last_project, automatic=False)
 
     def _publish_project_private(self, project: Path, *, automatic: bool):
+        if (project / "test_mode.json").exists():
+            if not automatic:
+                messagebox.showinfo("Test", "Próbki techniczne nie są publikowane. Wygeneruj osobny pełny projekt.")
+            return
         video = project / "exports/final.mp4"
         if not video.exists():
             messagebox.showwarning("Brak filmu", "Ten projekt nie zawiera gotowego filmu exports/final.mp4.")
