@@ -167,6 +167,7 @@ class FFmpegEditor:
         music: Path | None = None,
         aspect_ratio: str = "16:9",
         duration_seconds: int = 30,
+        test_mode: bool = False,
     ) -> Path:
         executable = self._executable()
         if not executable:
@@ -185,7 +186,7 @@ class FFmpegEditor:
         has_audio = bool(audio and audio.exists())
         has_music = bool(music and music.exists())
         command = [executable, "-y"]
-        if has_audio:
+        if has_audio and not test_mode:
             command += ["-stream_loop", "-1"]
         command += ["-f", "concat", "-safe", "0", "-i", str(concat_file)]
         if has_audio:
@@ -193,8 +194,9 @@ class FFmpegEditor:
         if has_music:
             command += ["-stream_loop", "-1", "-i", str(music)]
 
-        duration_seconds = max(30, min(60, int(duration_seconds)))
-        fade_start = max(0, duration_seconds - 2)
+        duration_seconds = 4 if test_mode else max(30, min(60, int(duration_seconds)))
+        fade_duration = 0.2 if test_mode else 2
+        fade_start = max(0, duration_seconds - fade_duration)
         width, height = (720, 1280) if aspect_ratio == "9:16" else (1280, 720)
         filters = [
             f"scale={width}:{height}:force_original_aspect_ratio=increase",
@@ -202,7 +204,8 @@ class FFmpegEditor:
         ]
         if subtitles and subtitles.exists():
             filters.append(self._subtitle_filter(subtitles))
-        filters.append(f"fade=t=out:st={duration_seconds - 1.5}:d=1.5")
+        visual_fade = 0.2 if test_mode else 1.5
+        filters.append(f"fade=t=out:st={duration_seconds - visual_fade}:d={visual_fade}")
         filters.append("format=yuv420p")
 
         command += ["-map", "0:v:0", "-vf", ",".join(filters), "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
@@ -213,7 +216,7 @@ class FFmpegEditor:
                 "-map", "[aout]", "-c:a", "aac", "-t", str(duration_seconds),
             ]
         elif has_audio:
-            command += ["-map", "1:a:0", "-af", f"apad=pad_dur={duration_seconds},atrim=0:{duration_seconds},afade=t=out:st={fade_start}:d=2", "-c:a", "aac", "-t", str(duration_seconds)]
+            command += ["-map", "1:a:0", "-af", f"apad=pad_dur={duration_seconds},atrim=0:{duration_seconds},afade=t=out:st={fade_start}:d={fade_duration}", "-c:a", "aac", "-t", str(duration_seconds)]
         else:
             command += ["-an", "-t", str(duration_seconds)]
         command += ["-movflags", "+faststart", str(output)]
