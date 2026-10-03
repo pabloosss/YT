@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 from core.config import Settings
 from core.json_utils import strip_thinking
+from core.studio_memory import BASE_STUDIO_INSTRUCTIONS
 from core.stream_filter import VisibleStream
 
 
@@ -24,6 +25,7 @@ class OpenAIGateway:
         self._trace_callback: TraceCallback | None = None
         self._active_agent = "AI"
         self.channel_context = ""
+        self.studio_context = ""
 
     @property
     def demo_mode(self) -> bool:
@@ -55,6 +57,12 @@ class OpenAIGateway:
             pass
 
     def ask(self, instructions: str, prompt: str) -> str:
+        instructions = BASE_STUDIO_INSTRUCTIONS + "\n\nINSTRUKCJA BIEŻĄCEGO AGENTA:\n" + instructions
+        if self.studio_context:
+            instructions += (
+                "\n\nPamięć doświadczeń produkcyjnych. Stosuj ją tylko, gdy pasuje do zadania; "
+                "nie traktuj jej jako źródła faktów o odcinku:\n" + self.studio_context
+            )
         if self.channel_context:
             instructions += "\nProfil kanału podany przez użytkownika (wiedza wymaga weryfikacji):\n" + self.channel_context
         if self.demo_mode:
@@ -362,4 +370,3 @@ class OpenAIGateway:
             response.stream_to_file(output_path)
 
         return output_path
-
