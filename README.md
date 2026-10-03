@@ -1,6 +1,6 @@
-# AI Content Studio v0.9.6 — TikTok / YouTube Shorts
+# AI Content Studio v0.10.0 — TikTok / YouTube Shorts
 
-Windowsowa aplikacja, która prowadzi projekt od tematu do kompletnego pionowego filmu 9:16. Domyślny qwen3:14b dobiera długość opowieści od 30 do 60 sekund, redaguje tekst lektora i wykonuje kontrolę planu obrazu oraz końcową kontrolę. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
+Windowsowa aplikacja, która prowadzi projekt od tematu do kompletnego pionowego filmu 9:16. Domyślny qwen3:14b działa jako lokalny reżyser: planuje, wykonuje niezależne kontrole, poprawia wyniki i korzysta z lokalnej pamięci doświadczeń. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
 
 ## Uruchomienie
 
@@ -28,16 +28,18 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 ## Jak powstaje film
 
 1. Research internetowy zbiera wyniki i adresy źródeł.
-2. Lokalny Qwen przygotowuje research, scenariusz i plan ujęć.
-3. Qwen tworzy po angielsku prompty filmowe dla Veo, a osobny przebieg lokalnej kontroli poprawia ich spójność, kadr 9:16 i wolne miejsce pod napisy.
-4. Lokalny redaktor sprawdza, czy opowieść ma hook, logiczne rozwinięcie i pełny finał, bez urwanych zdań.
-5. Program dobiera darmowe ilustracje z Wikimedia Commons wraz z autorem, źródłem i licencją.
-6. ElevenLabs Turbo v2.5 tworzy lektora dopiero po zatwierdzeniu planu obrazu. Daty i lata są wcześniej zapisywane słownie po polsku.
-7. Veo 3.1 Lite generuje 2 lub 3 najważniejsze pionowe klipy po 4 sekundy — dopiero po poprawnym lektorze.
-8. FFmpeg tworzy 8–12 niepowtarzających się ujęć, animuje ilustracje i składa je bez zapętlania źródeł.
-9. Aplikacja dodaje cichą muzykę, małe napisy przy dolnej krawędzi oraz łagodne wygaszenie obrazu i dźwięku.
-10. Gotowy film trafia do projects/<projekt>/exports/final.mp4, a klatka podglądowa do thumbnail/thumbnail.jpg.
-11. Metadata Agent przygotowuje tytuł z #Shorts, opis i tagi. Końcowa kontrola Qwen podsumowuje całość i może zablokować automatyczny upload.
+2. Lokalny Qwen przygotowuje research, a osobny przebieg fact-checkera usuwa twierdzenia niepoparte dostarczonymi materiałami.
+3. Qwen przygotowuje scenariusz i plan ujęć według stałych zasad studia oraz zapisanych doświadczeń z zatwierdzonych filmów.
+4. Qwen tworzy po angielsku prompty filmowe dla Veo, a osobny przebieg lokalnej kontroli poprawia ich spójność, kadr 9:16 i wolne miejsce pod napisy.
+5. Lokalny supervisor sprawdza, czy opowieść ma hook, logiczne rozwinięcie i pełny finał; może przeprowadzić dwie rundy poprawy.
+6. Program dobiera darmowe ilustracje z Wikimedia Commons wraz z autorem, źródłem i licencją.
+7. ElevenLabs Turbo v2.5 tworzy lektora dopiero po zatwierdzeniu planu obrazu. Daty i lata są wcześniej zapisywane słownie po polsku.
+8. Veo 3.1 Lite generuje 2 lub 3 najważniejsze pionowe klipy po 4 sekundy — dopiero po poprawnym lektorze.
+9. FFmpeg tworzy 8–12 niepowtarzających się ujęć, animuje ilustracje i składa je bez zapętlania źródeł.
+10. Aplikacja dodaje cichą muzykę, małe napisy przy dolnej krawędzi oraz łagodne wygaszenie obrazu i dźwięku.
+11. Gotowy film trafia do projects/<projekt>/exports/final.mp4, a klatka podglądowa do thumbnail/thumbnail.jpg.
+12. Metadata Agent przygotowuje tytuł z #Shorts, opis i tagi. Końcowa kontrola Qwen podsumowuje całość i może zablokować automatyczny upload.
+13. Po zatwierdzonym filmie Qwen zapisuje maksymalnie trzy ogólne wnioski produkcyjne dla następnych projektów.
 
 Po połączeniu YouTube zatwierdzony film jest automatycznie wysyłany jako PRIVATE razem z miniaturą. Aplikacja zapisuje ID i link w `09_upload.json` i nie wysyła drugi raz tego samego projektu. Widoczny przycisk **WZNÓW / NAPRAW PROJEKT** kontynuuje starszy lub przerwany projekt od pierwszego brakującego etapu, zachowując prawidłowe gotowe media.
 
@@ -46,7 +48,9 @@ Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pak
 ## Pliki projektu
 
 - 00_sources.json — wyniki wyszukiwania i linki;
+- 00_studio_memory.txt — zasady produkcyjne użyte w danym projekcie;
 - 01_research.md — research;
+- 01_research_review.json — wynik niezależnej kontroli researchu;
 - 02_script.txt — scenariusz;
 - 03_shots.json — plan ujęć;
 - 04_video_prompts.json — prompty Veo;
@@ -58,6 +62,7 @@ Bez włączonej opcji pełnego filmu aplikacja nadal przygotowuje bezpłatny pak
 - subtitles/narration.srt — zsynchronizowane napisy;
 - exports/final.mp4 — gotowy film;
 - 06_quality.json, 07_youtube.json, pipeline_result.json — kontrola i metadata.
+- 10_studio_learning.json — propozycje i wnioski zapisane przez lokalne AI po zatwierdzeniu filmu.
 
 ## Koszty i bezpieczeństwo
 
@@ -68,6 +73,8 @@ Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częś
 ## Pamięć kanału
 
 Zakładka **Pamięć kanału** zapisuje lokalnie nazwę kanału, odbiorców, styl i własne zasady w projects/_memory/channel_profile.json. Profil jest dołączany do instrukcji agentów. Jest to pamięć kontekstowa, nie trenowanie wag Qwena.
+
+Każdy agent otrzymuje również stałe podstawowe instrukcje AI Content Studio: weryfikowanie źródeł, pełne zakończenie historii, brak powtarzanych ujęć, pionowy kadr, poprawną wymowę i oszczędzanie płatnych generacji. Po zatwierdzonym filmie model może zapisać do `projects/_memory/studio_lessons.json` maksymalnie trzy ogólne wnioski. Pamięć ma limit 20 wpisów, odrzuca sekrety, linki i kategorie faktograficzne. Można ją podejrzeć albo wyczyścić w GUI. Nie jest to fine-tuning modelu.
 
 ## RAM
 
