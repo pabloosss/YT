@@ -18,6 +18,12 @@ with TemporaryDirectory() as temp:
                 with patch.object(app, "save_settings", side_effect=AssertionError("duplicate job")):
                     app.start_pipeline()
                 app._set_busy(False)
+                assert app.quality_mode.get() == "Dokładnie — 2 kontrole"
+                # Tests must not accidentally reach any upload path.
+                test_project = app.store.create("test sample")
+                test_project.write_json("test_mode.json", {"publish_allowed": False})
+                with patch.object(app, "_job", side_effect=AssertionError("test upload")):
+                    app._publish_project_private(test_project.path, automatic=True)
                 # A 32 GB machine with 22 GB free must not be rejected by a fixed +3 GB reserve.
                 app.settings.ai_provider = "ollama"
                 app.settings.ollama_ram_limit_percent = 50
