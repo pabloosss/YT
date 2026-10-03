@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import re
 
 try:
     from dotenv import load_dotenv
@@ -57,6 +58,7 @@ class Settings:
     elevenlabs_model: str = "eleven_turbo_v2_5"
     burn_subtitles: bool = True
     music_path: str = ""
+    quality_mode: str = "careful"
 
 
 def load_settings() -> Settings:
@@ -70,11 +72,10 @@ def load_settings() -> Settings:
         settings_version = int(os.getenv("AI_STUDIO_SETTINGS_VERSION", "0"))
     except ValueError:
         settings_version = 0
-    ollama_model = (
-        requested_model
-        if settings_version >= 6 and requested_model in {"qwen3:8b", "qwen3:14b"}
-        else "qwen3:14b"
-    )
+    # Version 7 preserves a model explicitly selected from the local Ollama inventory.
+    supported = requested_model in {"qwen3:8b", "qwen3:14b"}
+    valid_name = bool(re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,159}", requested_model))
+    ollama_model = requested_model if (settings_version >= 7 and valid_name or settings_version >= 6 and supported) else "qwen3:14b"
 
     return Settings(
         ai_provider="ollama",
@@ -118,4 +119,5 @@ def load_settings() -> Settings:
         elevenlabs_model="eleven_turbo_v2_5",
         burn_subtitles=_as_bool(os.getenv("BURN_SUBTITLES"), default=True),
         music_path=os.getenv("MUSIC_PATH", "").strip(),
+        quality_mode="standard" if os.getenv("STUDIO_QUALITY_MODE") == "standard" else "careful",
     )
