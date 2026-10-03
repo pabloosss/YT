@@ -20,6 +20,7 @@ from core.ollama_manager import OllamaManager
 from core.openai_gateway import OpenAIGateway
 from core.pipeline import ContentPipeline
 from core.project_store import ProjectStore
+from core.studio_memory import StudioMemory
 from core.system_monitor import get_memory_snapshot
 from core.veo_client import VeoClient
 from core.web_research import search_web, source_text
@@ -35,12 +36,13 @@ AI_MODES = {
 class StudioApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("AI Content Studio v0.9.6 · Shorts 30–60 s")
+        self.title("AI Content Studio v0.10.0 · lokalny reżyser AI")
         self.geometry("1180x820")
         self.minsize(960, 700)
         self.settings = load_settings()
         self.store = ProjectStore(self.settings.projects_dir)
         self.memory = ChannelMemory(self.settings.projects_dir / "_memory")
+        self.studio_memory = StudioMemory(self.settings.projects_dir / "_memory")
         self.events = queue.Queue()
         self.ai = OpenAIGateway(self.settings)
         self.ai.set_trace_callback(lambda event: self.events.put(("trace", event)))
@@ -175,7 +177,8 @@ class StudioApp(tk.Tk):
 
     def _memory_ui(self):
         ttk.Label(self.channel, text="Tutaj uczysz aplikację swoich zasad. Pamięć trafia do agentów przy każdym nowym projekcie.\n"
-                  "To zapisany profil, nie trening modelu. Wyniki AI nie są automatycznie zapamiętywane jako fakty.",
+                  "To pamięć kontekstowa, nie trening wag modelu. AI zapisuje tylko ogólne wnioski produkcyjne "
+                  "z zatwierdzonych filmów — nigdy fakty z odcinka ani klucze API.",
                   wraplength=1000).pack(anchor="w", pady=(0, 8))
         self.memory_fields = {}
         try:
@@ -194,6 +197,17 @@ class StudioApp(tk.Tk):
         row.pack(fill="x")
         self._button(row, "Zapisz pamięć", self.save_memory)
         ttk.Label(row, text="Maks. 4000 znaków. Zapis lokalny: projects/_memory/channel_profile.json").pack(side="left")
+        ttk.Separator(self.channel).pack(fill="x", pady=8)
+        ttk.Label(self.channel, text="Czego lokalne AI nauczyło się z zatwierdzonych filmów",
+                  font=("Segoe UI", 11, "bold")).pack(anchor="w")
+        self.learned_memory = ScrolledText(self.channel, height=5, wrap="word", state="disabled")
+        self.learned_memory.pack(fill="both", expand=True, pady=(4, 4))
+        learned_row = ttk.Frame(self.channel)
+        learned_row.pack(fill="x")
+        self._button(learned_row, "Odśwież wnioski AI", self.refresh_learned_memory)
+        self._button(learned_row, "Wyczyść wnioski AI", self.clear_learned_memory)
+        ttk.Label(learned_row, text="Zapis lokalny: projects/_memory/studio_lessons.json").pack(side="left")
+        self.refresh_learned_memory()
 
     def _settings_ui(self):
         ttk.Label(self.settings_tab, text="Lokalne AI: Ollama",
@@ -350,6 +364,25 @@ class StudioApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Pamięć", str(exc))
 
+    def refresh_learned_memory(self):
+        try:
+            self._text(self.learned_memory, self.studio_memory.display())
+        except Exception as exc:
+            self._text(self.learned_memory, "Nie można odczytać wniosków AI: " + str(exc))
+
+    def clear_learned_memory(self):
+        if not messagebox.askyesno(
+            "Wyczyść wnioski AI",
+            "Usunąć wszystkie automatycznie zapisane wnioski produkcyjne? Profil kanału pozostanie bez zmian.",
+        ):
+            return
+        try:
+            self.studio_memory.clear()
+            self.refresh_learned_memory()
+            self.summary.set("Wnioski lokalnego AI zostały wyczyszczone.")
+        except Exception as exc:
+            messagebox.showerror("Pamięć AI", str(exc))
+
     def _set_busy(self, busy):
         self.busy = busy
         for button in self.actions:
@@ -453,6 +486,7 @@ class StudioApp(tk.Tk):
             has_video = (project.path / "exports/final.mp4").exists()
             self.summary.set("Gotowy film — sprawdź go w zakładce Projekty." if has_video else "Pakiet tekstowy gotowy. Film nie został wygenerowany. Otwórz Projekty.")
             self._text(self.results, (project.path / "02_script.txt").read_text(encoding="utf-8"))
+            self.refresh_learned_memory()
             if has_video:
                 self._publish_project_private(project.path, automatic=True)
         self._job("Przygotowuję projekt", work, done)
@@ -478,7 +512,9 @@ class StudioApp(tk.Tk):
             project = self.store.create("Tematy AI: " + query)
             try:
                 self.ai.channel_context = self.memory.context()
+                self.ai.studio_context = self.studio_memory.context()
                 project.write_text("00_channel_profile.txt", self.ai.channel_context)
+                project.write_text("00_studio_memory.txt", self.ai.studio_context)
                 def progress(message):
                     project.write_json("state.json", {"status": "running", "agent": "Research", "message": message})
                     self.events.put(("progress", message))
@@ -491,6 +527,7 @@ class StudioApp(tk.Tk):
                 raise
             finally:
                 self.ai.channel_context = ""
+                self.ai.studio_context = ""
         def done(result):
             project, text = result
             self.last_project = project.path
@@ -727,6 +764,7 @@ class StudioApp(tk.Tk):
             )
         def done(output):
             self._refresh_projects()
+            self.refresh_learned_memory()
             detail = "Wykorzystano zapisane klipy bez nowego kosztu Veo." if clips else "Wygenerowano klipy ze starego scenariusza."
             self.summary.set("Film gotowy: " + str(output))
             self._publish_project_private(project, automatic=True)
