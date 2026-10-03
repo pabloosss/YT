@@ -79,6 +79,7 @@ class SubtitleTests(unittest.TestCase):
             "risks": [],
             "video_info": {"short_eligible": True},
         }
+        pipeline._learn_from_project = lambda **_kwargs: []
         pipeline._review_visual_plan = lambda **kwargs: (
             kwargs["prompts"],
             {
