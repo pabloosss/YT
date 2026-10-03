@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+from uuid import uuid4
 from tempfile import NamedTemporaryFile
 
 
@@ -49,7 +50,9 @@ class StudioMemory:
         try:
             with NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.path.parent, delete=False) as stream:
                 temporary = Path(stream.name)
-                json.dump(lessons[-MAX_LESSONS:], stream, ensure_ascii=False, indent=2)
+                approved = [item for item in lessons if item.get("status") == "approved"][-MAX_LESSONS:]
+                pending = [item for item in lessons if item.get("status") != "approved"][-MAX_LESSONS:]
+                json.dump(approved + pending, stream, ensure_ascii=False, indent=2)
             temporary.replace(self.path)
         finally:
             if temporary:
@@ -73,7 +76,7 @@ class StudioMemory:
         lessons = self.load()
         known = {re.sub(r"\W+", "", str(item.get("lesson", "")).lower()) for item in lessons}
         added: list[dict] = []
-        for candidate in candidates[:5]:
+        for candidate in candidates[:3]:
             if not isinstance(candidate, dict):
                 continue
             category = str(candidate.get("category") or "workflow").strip().lower()
@@ -88,6 +91,8 @@ class StudioMemory:
             if confidence < 0.6:
                 continue
             record = {
+                "id": uuid4().hex,
+                "status": "pending",
                 "category": category,
                 "lesson": lesson,
                 "confidence": round(min(confidence, 1.0), 2),
@@ -101,24 +106,36 @@ class StudioMemory:
         return added
 
     def context(self) -> str:
-        lessons = self.load()
+        lessons = [item for item in self.load() if item.get("status") == "approved"]
         if not lessons:
-            return "Brak zapisanych doświadczeń z wcześniejszych zatwierdzonych filmów."
+            return "Brak zasad zatwierdzonych przez użytkownika. Sugestie AI nie są dowodami jakości."
         lines = [
             f"- [{item.get('category', 'workflow')}] {item.get('lesson', '')}"
             for item in lessons[-MAX_LESSONS:]
             if item.get("lesson")
         ]
-        return "SPRAWDZONE WNIOSKI PRODUKCYJNE Z POPRZEDNICH PROJEKTÓW:\n" + "\n".join(lines)
+        return ("ZASADY PRODUKCYJNE ZATWIERDZONE PRZEZ UŻYTKOWNIKA (nie fakty o odcinku):\n" + "\n".join(lines))[:1800]
 
     def display(self) -> str:
         lessons = self.load()
         if not lessons:
             return "AI nie zapisało jeszcze żadnych wniosków. Pamięć powstaje dopiero po zatwierdzonym filmie."
         return "\n".join(
-            f"{index}. [{item.get('category', 'workflow')}] {item.get('lesson', '')}"
+            f"{index}. [{'ZATWIERDZONA' if item.get('status') == 'approved' else 'PROPOZYCJA AI'}] "
+            f"[{item.get('category', 'workflow')}] {item.get('lesson', '')}"
             for index, item in enumerate(lessons, start=1)
         )
 
     def clear(self) -> None:
         self._write([])
+
+    def decide(self, index: int, *, approve: bool) -> None:
+        lessons = self.load()
+        if index < 0 or index >= len(lessons):
+            raise ValueError("Nie ma takiego wniosku. Odśwież listę.")
+        if approve:
+            lessons[index]["status"] = "approved"
+            lessons[index]["approved_at"] = datetime.now(timezone.utc).isoformat()
+        else:
+            lessons.pop(index)
+        self._write(lessons)
