@@ -1,4 +1,16 @@
-# AI Content Studio v0.10.0 — TikTok / YouTube Shorts
+# AI Content Studio v0.11.0 — studio agentów / TikTok / YouTube Shorts
+
+## Nowy sposób pracy
+
+Dyrektor tworzy `00_director_plan.json`: cel, kąt narracji, pytania badawcze i kryteria odbioru. Plan otrzymują kolejne role: Research, Scenariusz, Showrunner, Grafika, Lektor, Montaż, Kontrola i YouTube Meta. Agenci tekstowi wykonują osobne zapytania kolejno na jednym lokalnym modelu, nie ładują dziewięciu modeli do RAM. Montaż wykonuje FFmpeg, a płatne generatory nadal są zewnętrznymi usługami.
+
+W Ustawieniach model i sposób pracy wybiera się osobno. Domyślny tryb **Dokładnie — 2 kontrole** wymaga dwóch ocen scenariusza nawet po pierwszej pozytywnej ocenie. **Standardowo** kończy po pierwszym zatwierdzeniu (maksymalnie dwie próby). Nie zwiększamy automatycznie kontekstu ani RAM. **Modele z Ollamy** odczytuje lokalną listę; można wybrać inny zainstalowany model zgodny z używanym API chat/thinking. Nie pobieramy modelu automatycznie i nie zakładamy, że każdy model będzie lepszy od Qwena.
+
+### Próbka przed pełnym filmem
+
+Przycisk **TEST 4 s — obraz + głos** tworzy osobny projekt: plan i kontrola promptu w lokalnym AI, jeden krótki lektor, jeden klip Veo 4 s, napisy i lokalny montaż. To płatny test techniczny, wymagający potwierdzenia, nie pełny historyczny odcinek. Nie uruchamia researchu, publikacji ani uczenia. Dopuszcza najwyżej jedno wywołanie generacji TTS i jednego klipu wideo; aplikacja nie ponawia automatycznie płatnych generacji. Zbyt długi lektor zatrzymuje test przed Veo. Gotowy wynik: `exports/test_4s.mp4`. Nie można wznowić próbki jako pełnego filmu; nowa próbka wymaga nowego potwierdzenia kosztu.
+
+Testy kodu nie dowodzą jakości filmu. Gotową próbkę trzeba obejrzeć i odsłuchać. [Architektura i kolejne etapy](docs/STUDIO_ARCHITECTURE.md).
 
 Windowsowa aplikacja, która prowadzi projekt od tematu do kompletnego pionowego filmu 9:16. Domyślny qwen3:14b działa jako lokalny reżyser: planuje, wykonuje niezależne kontrole, poprawia wyniki i korzysta z lokalnej pamięci doświadczeń. Klipy powstają w Google Veo, lektor i dokładne znaczniki napisów w ElevenLabs, a FFmpeg lokalnie składa final.mp4.
 
@@ -39,7 +51,7 @@ Klucze zapisują się wyłącznie w lokalnym .env, który jest ignorowany przez 
 10. Aplikacja dodaje cichą muzykę, małe napisy przy dolnej krawędzi oraz łagodne wygaszenie obrazu i dźwięku.
 11. Gotowy film trafia do projects/<projekt>/exports/final.mp4, a klatka podglądowa do thumbnail/thumbnail.jpg.
 12. Metadata Agent przygotowuje tytuł z #Shorts, opis i tagi. Końcowa kontrola Qwen podsumowuje całość i może zablokować automatyczny upload.
-13. Po zatwierdzonym filmie Qwen zapisuje maksymalnie trzy ogólne wnioski produkcyjne dla następnych projektów.
+13. Po pozytywnej samoocenie filmu Qwen proponuje maksymalnie trzy ogólne wnioski produkcyjne. Nie stają się automatycznie instrukcjami.
 
 Po połączeniu YouTube zatwierdzony film jest automatycznie wysyłany jako PRIVATE razem z miniaturą. Aplikacja zapisuje ID i link w `09_upload.json` i nie wysyła drugi raz tego samego projektu. Widoczny przycisk **WZNÓW / NAPRAW PROJEKT** kontynuuje starszy lub przerwany projekt od pierwszego brakującego etapu, zachowując prawidłowe gotowe media.
 
@@ -74,7 +86,7 @@ Veo może odrzucić prompt przez zasady bezpieczeństwa albo limit konta. Częś
 
 Zakładka **Pamięć kanału** zapisuje lokalnie nazwę kanału, odbiorców, styl i własne zasady w projects/_memory/channel_profile.json. Profil jest dołączany do instrukcji agentów. Jest to pamięć kontekstowa, nie trenowanie wag Qwena.
 
-Każdy agent otrzymuje również stałe podstawowe instrukcje AI Content Studio: weryfikowanie źródeł, pełne zakończenie historii, brak powtarzanych ujęć, pionowy kadr, poprawną wymowę i oszczędzanie płatnych generacji. Po zatwierdzonym filmie model może zapisać do `projects/_memory/studio_lessons.json` maksymalnie trzy ogólne wnioski. Pamięć ma limit 20 wpisów, odrzuca sekrety, linki i kategorie faktograficzne. Można ją podejrzeć albo wyczyścić w GUI. Nie jest to fine-tuning modelu.
+Każdy agent otrzymuje stałe instrukcje studia. W `projects/_memory/studio_lessons.json` oddzielamy maksymalnie 20 zatwierdzonych zasad od 20 propozycji. W zakładce Pamięć kanału wybierz wniosek i zatwierdź albo odrzuć. Dopiero zatwierdzone zasady trafiają do przyszłych zapytań; kontekst pamięci jest ograniczony do 1800 znaków. Stare wnioski bez statusu również wymagają akceptacji. Propozycje nie wypierają zatwierdzonych zasad. Filtry treści są pomocnicze, nie gwarantują poprawności wniosku — dlatego potrzebna jest ocena człowieka. Nie jest to fine-tuning. Błąd zapisywania propozycji nie unieważnia gotowego filmu.
 
 ## RAM
 
