@@ -8,6 +8,7 @@ import re
 import threading
 
 from agents.graphics import GraphicsAgent
+from agents.director import DirectorAgent
 from agents.metadata import MetadataAgent
 from agents.quality import QualityAgent
 from agents.research import ResearchAgent
@@ -40,6 +41,7 @@ class ContentPipeline:
         self.studio_memory = StudioMemory(settings.projects_dir / "_memory")
 
         self.research_agent = ResearchAgent(ai)
+        self.director_agent = DirectorAgent(ai)
         self.script_agent = ScriptAgent(ai)
         self.showrunner_agent = ShowrunnerAgent(ai)
         self.graphics_agent = GraphicsAgent(ai)
@@ -51,6 +53,7 @@ class ContentPipeline:
         """Independent source-grounding pass before the script is allowed to use research."""
         if self.ai.demo_mode:
             return research, {"approved": True, "summary": "Tryb demo.", "issues": []}
+        self.ai.set_active_agent("Kontrola")
         online = bool(evidence and evidence.get("sources"))
         raw = self.ai.ask(
             instructions=(
@@ -87,9 +90,29 @@ class ContentPipeline:
 
     def _learn_from_project(self, *, project_path: Path, topic: str, script_review: dict,
                             visual_review: dict, final_review: dict) -> list[dict]:
+        try:
+            return self._propose_lessons(project_path=project_path, topic=topic, script_review=script_review,
+                                         visual_review=visual_review, final_review=final_review)
+        except Exception:
+            # Learning is optional: its failure must never invalidate already paid media.
+            try:
+                (project_path / "10_studio_learning.json").write_text(
+                    json.dumps({"status": "failed", "saved": [],
+                                "message": "Nie zapisano propozycji. Gotowy film pozostaje bez zmian."}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+            except OSError:
+                pass
+            return []
+
+    def _propose_lessons(self, *, project_path: Path, topic: str, script_review: dict,
+                         visual_review: dict, final_review: dict) -> list[dict]:
         """Extract bounded workflow lessons from an approved project, never episode facts."""
         if self.ai.demo_mode or final_review.get("approved") is not True:
             return []
+        if (project_path / "test_mode.json").exists():
+            return []
+        self.ai.set_active_agent("Kontrola")
         raw = self.ai.ask(
             instructions=(
                 "Jesteś kierownikiem procesu AI Content Studio. Wyciągnij maksymalnie 3 krótkie, wielokrotnie "
@@ -113,7 +136,7 @@ class ContentPipeline:
         added = self.studio_memory.add(candidates, project=project_path.name)
         self.ai.studio_context = self.studio_memory.context()
         (project_path / "10_studio_learning.json").write_text(
-            json.dumps({"proposed": candidates[:5], "saved": added}, ensure_ascii=False, indent=2),
+            json.dumps({"status": "pending_human_review", "saved": added}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         return added
@@ -162,6 +185,7 @@ class ContentPipeline:
     def _review_visual_plan(self, *, topic: str, narration: str, shots: list[dict],
                             prompts: list[dict]) -> tuple[list[dict], dict]:
         """Text-only art-direction gate before any paid Veo request."""
+        self.ai.set_active_agent("Kontrola")
         if self.ai.demo_mode:
             enriched = []
             for index, item in enumerate(prompts):
@@ -228,6 +252,7 @@ class ContentPipeline:
 
     def _supervise_narration(self, *, topic: str, research: str, narration: str) -> tuple[str, dict]:
         """Run up to two independent critique/correction cycles before downstream agents."""
+        self.ai.set_active_agent("Kontrola")
         if self.ai.demo_mode:
             return narration, {"approved": True, "cycles": 0, "issues": [], "summary": "Tryb demo."}
         current = clean_narration(narration)
@@ -259,7 +284,7 @@ class ContentPipeline:
                 "word_count": len(words),
             })
             current = candidate
-            if history[-1]["approved"]:
+            if history[-1]["approved"] and (self.settings.quality_mode == "standard" or cycle == 2):
                 return current, {
                     "approved": True,
                     "cycles": cycle,
@@ -421,6 +446,11 @@ class ContentPipeline:
             self.ai.channel_context = profile
             self.ai.studio_context = self.studio_memory.context()
             project.write_text("00_studio_memory.txt", self.ai.studio_context)
+            report("Dyrektor", "PLANUJĘ")
+            brief = self.director_agent.run(topic=topic)
+            project.write_json("00_director_plan.json", brief)
+            self.ai.project_context = json.dumps(brief, ensure_ascii=False)
+            report("Dyrektor", "DONE")
             result = self._run_project(topic, project, report, online)
             project.write_json("state.json", {"status": "completed", "agent": current})
             return result
@@ -432,6 +462,7 @@ class ContentPipeline:
         finally:
             self.ai.channel_context = ""
             self.ai.studio_context = ""
+            self.ai.project_context = ""
 
     def finish_existing(
         self,
@@ -441,6 +472,20 @@ class ContentPipeline:
         allow_generate_veo: bool = False,
         online: bool = True,
     ) -> Path:
+        project_path = Path(project_path)
+        if (project_path / "test_mode.json").exists():
+            raise RuntimeError("To krótki test, nie projekt produkcyjny. Użyj przycisku TEST 4 s; nie rozszerzam testu do płatnego filmu.")
+        try:
+            self.ai.channel_context = ChannelMemory(self.settings.projects_dir / "_memory").context()
+            plan = project_path / "00_director_plan.json"
+            self.ai.project_context = plan.read_text(encoding="utf-8") if plan.exists() else ""
+            return self._finish_existing(project_path, status, allow_generate_veo=allow_generate_veo, online=online)
+        finally:
+            self.ai.channel_context = ""
+            self.ai.studio_context = ""
+            self.ai.project_context = ""
+
+    def _finish_existing(self, project_path: Path, status=None, *, allow_generate_veo=False, online=True) -> Path:
         """Continue from the first missing stage. Existing paid media is always reused."""
         callback = status or (lambda _agent, _state: None)
         project_path = Path(project_path)
