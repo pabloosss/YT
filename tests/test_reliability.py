@@ -30,6 +30,8 @@ class ReliabilityTests(unittest.TestCase):
                 {"category": "fakty", "lesson": "Zapamiętaj fakt dotyczący bohatera tego odcinka.", "confidence": 1},
             ], project="projekt_testowy")
             self.assertEqual(len(added), 1)
+            self.assertNotIn("domknąć obietnicę", memory.context())
+            memory.decide(0, approve=True)
             self.assertIn("domknąć obietnicę", memory.context())
             self.assertNotIn("sk_tajnysekret", memory.path.read_text(encoding="utf-8"))
             memory.clear()
@@ -139,6 +141,7 @@ class ReliabilityTests(unittest.TestCase):
         with TemporaryDirectory() as temp:
             pipeline = self.pipeline(Path(temp))
             pipeline.settings.demo_mode = False
+            pipeline.director_agent.run = lambda **_: {"goal": "test"}
             with patch("core.pipeline.search_web", side_effect=ResearchUnavailable("offline")):
                 with self.assertRaisesRegex(RuntimeError, "offline"):
                     pipeline.run("test")
